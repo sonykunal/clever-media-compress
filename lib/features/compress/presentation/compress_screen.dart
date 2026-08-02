@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/magic_accents.dart';
 import 'compress_controller.dart';
 import 'widgets/comparison_preview.dart';
 import 'widgets/compression_controls.dart';
@@ -19,72 +20,82 @@ class CompressScreen extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         return Scaffold(
-          body: SafeArea(
-            bottom: false,
-            child: CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: _AppHeader(
-                    hasMedia: controller.hasMedia,
-                    onClear: controller.clearMedia,
+          body: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFCFBFD), AppColors.canvas],
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: CustomScrollView(
+                key: ValueKey(controller.hasMedia),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: _AppHeader(
+                      hasMedia: controller.hasMedia,
+                      onClear: controller.clearMedia,
+                    ),
                   ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 6, 18, 140),
-                  sliver: SliverList.list(
-                    children: [
-                      if (controller.errorMessage != null) ...[
-                        _ErrorBanner(
-                          message: controller.errorMessage!,
-                          onDismiss: controller.dismissError,
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      HeroPanel(
-                        hasMedia: controller.hasMedia,
-                        selecting: controller.selecting,
-                        onSelect: controller.selectMedia,
-                      ),
-                      const SizedBox(height: 22),
-                      if (!controller.hasMedia)
-                        const _PromiseGrid()
-                      else ...[
-                        _SelectionHeader(
-                          count: controller.media.length,
-                          totalBytes: controller.totalInputBytes,
-                          onAdd: controller.selectMedia,
-                        ),
-                        const SizedBox(height: 12),
-                        MediaStrip(
-                          media: controller.media,
-                          results: controller.results,
-                          processing: controller.processing,
-                          onRemove: controller.removeMedia,
-                        ),
-                        if (controller.previewMedia != null) ...[
-                          const SizedBox(height: 20),
-                          ComparisonPreview(
-                            media: controller.previewMedia!,
-                            preview: controller.preview,
-                            loading: controller.previewing,
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(18, 6, 18, 140),
+                    sliver: SliverList.list(
+                      children: [
+                        if (controller.errorMessage != null) ...[
+                          _ErrorBanner(
+                            message: controller.errorMessage!,
+                            onDismiss: controller.dismissError,
                           ),
+                          const SizedBox(height: 12),
                         ],
-                        const SizedBox(height: 16),
-                        CompressionControls(
-                          settings: controller.settings,
-                          enabled: !controller.processing,
-                          onQualityChanged: controller.setQuality,
-                          onResolutionChanged: controller.setResolutionScale,
-                          onMetadataChanged: controller.setPreserveMetadata,
-                          onLocationChanged: controller.setPreserveLocation,
+                        HeroPanel(
+                          hasMedia: controller.hasMedia,
+                          selecting: controller.selecting,
+                          onSelect: controller.selectMedia,
                         ),
-                        const SizedBox(height: 16),
-                        const _OutputPromise(),
+                        const SizedBox(height: 22),
+                        if (!controller.hasMedia)
+                          const _PromiseGrid()
+                        else ...[
+                          _SelectionHeader(
+                            count: controller.media.length,
+                            totalBytes: controller.totalInputBytes,
+                            onAdd: controller.selectMedia,
+                          ),
+                          const SizedBox(height: 12),
+                          MediaStrip(
+                            media: controller.media,
+                            results: controller.results,
+                            processing: controller.processing,
+                            onRemove: controller.removeMedia,
+                          ),
+                          if (controller.previewMedia != null) ...[
+                            const SizedBox(height: 20),
+                            ComparisonPreview(
+                              media: controller.previewMedia!,
+                              preview: controller.preview,
+                              loading: controller.previewing,
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          CompressionControls(
+                            settings: controller.settings,
+                            enabled: !controller.processing,
+                            onQualityChanged: controller.setQuality,
+                            onResolutionChanged: controller.setResolutionScale,
+                            onMetadataChanged: controller.setPreserveMetadata,
+                            onLocationChanged: controller.setPreserveLocation,
+                          ),
+                          const SizedBox(height: 16),
+                          const _OutputPromise(),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           bottomNavigationBar: controller.hasMedia
@@ -108,21 +119,7 @@ class _AppHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 14, 16, 14),
       child: Row(
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.brand, Color(0xFF4F9CF9)],
-              ),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.compress_rounded,
-              color: Colors.white,
-              size: 23,
-            ),
-          ),
+          const MagicIconBadge(),
           const SizedBox(width: 11),
           const Expanded(
             child: Column(
@@ -155,7 +152,10 @@ class _AppHeader extends StatelessWidget {
             IconButton.filledTonal(
               onPressed: () => _showAbout(context),
               icon: const Icon(Icons.info_outline_rounded, size: 20),
-              style: IconButton.styleFrom(backgroundColor: Colors.white),
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white,
+                side: const BorderSide(color: AppColors.border),
+              ),
             ),
         ],
       ),
@@ -282,7 +282,16 @@ class _PromiseCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: AppColors.brand, size: 24),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.violetMist,
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: AppColors.violetSoft),
+            ),
+            child: Icon(icon, color: AppColors.brand, size: 22),
+          ),
           const SizedBox(height: 13),
           Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 3),
@@ -304,14 +313,14 @@ class _OutputPromise extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFECFDF3),
+        color: AppColors.violetMist,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFA6F4C5)),
+        border: Border.all(color: AppColors.violetSoft),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.shield_outlined, color: AppColors.success),
+          MagicIconBadge(size: 42, iconSize: 20),
           SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -320,7 +329,7 @@ class _OutputPromise extends StatelessWidget {
                 Text(
                   'Verification, not assumptions',
                   style: TextStyle(
-                    color: Color(0xFF027A48),
+                    color: AppColors.ink,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -328,7 +337,7 @@ class _OutputPromise extends StatelessWidget {
                 Text(
                   'The final file is reopened and its capture date compared. Outputs without a matching source date are clearly marked “Needs review.”',
                   style: TextStyle(
-                    color: Color(0xFF027A48),
+                    color: AppColors.muted,
                     fontSize: 11.5,
                     height: 1.4,
                   ),
@@ -434,7 +443,7 @@ class _BatchActionBar extends StatelessWidget {
                   minHeight: 6,
                   borderRadius: BorderRadius.circular(99),
                   color: AppColors.brand,
-                  backgroundColor: const Color(0xFFEDE9FE),
+                  backgroundColor: AppColors.violetSoft,
                 ),
                 const SizedBox(height: 10),
               ],

@@ -64,7 +64,7 @@ class _MediaTile extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   ColoredBox(
-                    color: const Color(0xFFEDE9FE),
+                    color: AppColors.violetMist,
                     child: media.isImage
                         ? Image.file(
                             File(media.path),
@@ -96,7 +96,7 @@ class _MediaTile extends StatelessWidget {
                       bottom: 7,
                       child: _StatusDot(
                         color: result!.captureDateVerified
-                            ? AppColors.success
+                            ? AppColors.brand
                             : AppColors.warning,
                         icon: result!.captureDateVerified
                             ? Icons.check_rounded

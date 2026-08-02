@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/magic_accents.dart';
 
 class HeroPanel extends StatelessWidget {
   const HeroPanel({
@@ -16,35 +17,30 @@ class HeroPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (hasMedia) {
+      return _SelectedHero(selecting: selecting, onSelect: onSelect);
+    }
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 26, 24, 24),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(30),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF28205F), Color(0xFF5B4FE5), Color(0xFF478CEB)],
-          stops: [0, .62, 1],
-        ),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: AppColors.brand.withValues(alpha: .22),
-            blurRadius: 32,
-            offset: const Offset(0, 18),
+            color: AppColors.ink.withValues(alpha: .06),
+            blurRadius: 30,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: Stack(
         children: [
           const Positioned(
-            right: -34,
-            top: -58,
-            child: _GlowOrb(size: 170, color: Color(0x4035E8CF)),
-          ),
-          const Positioned(
-            right: 78,
-            bottom: -72,
-            child: _GlowOrb(size: 140, color: Color(0x3060A5FA)),
+            right: 0,
+            top: 2,
+            child: MagicSparkle(size: 18, color: AppColors.violetSoft),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,25 +51,23 @@ class HeroPanel extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: .13),
+                  color: AppColors.violetMist,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: .16),
-                  ),
+                  border: Border.all(color: AppColors.violetSoft),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.history_rounded,
+                      Icons.auto_awesome_rounded,
                       size: 16,
-                      color: Color(0xFF8FF3D8),
+                      color: AppColors.brand,
                     ),
                     SizedBox(width: 7),
                     Text(
                       'CHRONOLOGY SAFE',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.brandDark,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                         letterSpacing: .8,
@@ -82,12 +76,14 @@ class HeroPanel extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              const MagicTransformArtwork(),
               const SizedBox(height: 20),
               const Text(
                 'Smaller media.\nSame moment.',
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 35,
+                  color: AppColors.ink,
+                  fontSize: 34,
                   height: 1.03,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -1.2,
@@ -96,8 +92,8 @@ class HeroPanel extends StatelessWidget {
               const SizedBox(height: 13),
               Text(
                 'Compress a whole batch while keeping the capture date that your gallery uses for sorting.',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: .76),
+                style: const TextStyle(
+                  color: AppColors.muted,
                   fontSize: 15,
                   height: 1.45,
                 ),
@@ -110,13 +106,13 @@ class HeroPanel extends StatelessWidget {
                         dimension: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: AppColors.brandDark,
+                          color: Colors.white,
                         ),
                       )
                     : Icon(
                         hasMedia
                             ? Icons.add_photo_alternate_outlined
-                            : Icons.photo_library_outlined,
+                            : Icons.auto_fix_high_rounded,
                       ),
                 label: Text(
                   hasMedia
@@ -124,9 +120,9 @@ class HeroPanel extends StatelessWidget {
                       : 'Choose photos & videos',
                 ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.brandDark,
-                  minimumSize: const Size(0, 52),
+                  backgroundColor: AppColors.ink,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(54),
                   padding: const EdgeInsets.symmetric(horizontal: 19),
                 ),
               ),
@@ -138,18 +134,85 @@ class HeroPanel extends StatelessWidget {
   }
 }
 
-class _GlowOrb extends StatelessWidget {
-  const _GlowOrb({required this.size, required this.color});
+class _SelectedHero extends StatelessWidget {
+  const _SelectedHero({required this.selecting, required this.onSelect});
 
-  final double size;
-  final Color color;
+  final bool selecting;
+  final VoidCallback onSelect;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: .045),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const MagicIconBadge(size: 46, iconSize: 22, inverted: true),
+              const SizedBox(width: 13),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Smaller media.\nSame moment.',
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontSize: 21,
+                        height: 1.03,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.5,
+                      ),
+                    ),
+                    SizedBox(height: 7),
+                    Text(
+                      'Compress a whole batch while keeping the capture date that your gallery uses for sorting.',
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: selecting ? null : onSelect,
+            icon: selecting
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.add_photo_alternate_outlined, size: 19),
+            label: const Text('Choose different media'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.ink,
+              minimumSize: const Size.fromHeight(48),
+              side: const BorderSide(color: AppColors.borderStrong),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

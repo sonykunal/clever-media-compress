@@ -61,8 +61,9 @@ class CompressionControls extends StatelessWidget {
                   width: 64,
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0EEFF),
+                    color: AppColors.violetMist,
                     borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: AppColors.violetSoft),
                   ),
                   alignment: Alignment.center,
                   child: Text(
@@ -131,7 +132,7 @@ class CompressionControls extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
-            const Divider(),
+            const Divider(color: AppColors.border),
             const SizedBox(height: 10),
             _ProtectionSwitch(
               icon: Icons.verified_user_outlined,
@@ -182,7 +183,7 @@ class _ResolutionOption extends StatelessWidget {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 5),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFF0EEFF) : Colors.white,
+            color: selected ? AppColors.violetMist : Colors.white,
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
               color: selected ? AppColors.brand : AppColors.border,
@@ -239,10 +240,11 @@ class _ProtectionSwitch extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFECFDF3),
+              color: AppColors.violetMist,
               borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: AppColors.violetSoft),
             ),
-            child: Icon(icon, color: AppColors.success, size: 21),
+            child: Icon(icon, color: AppColors.brand, size: 21),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -267,11 +269,7 @@ class _ProtectionSwitch extends StatelessWidget {
               ],
             ),
           ),
-          Switch.adaptive(
-            value: value,
-            activeTrackColor: AppColors.success,
-            onChanged: enabled ? onChanged : null,
-          ),
+          Switch.adaptive(value: value, onChanged: enabled ? onChanged : null),
         ],
       ),
     );
