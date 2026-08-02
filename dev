@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_DIR"
+
+ANDROID_AVD_NAME="${ANDROID_AVD_NAME:-clever_android}"
+ANDROID_SDK_PATH="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Library/Android/sdk}}"
+ADB_PATH="$ANDROID_SDK_PATH/platform-tools/adb"
+
+require_flutter() {
+  if ! command -v flutter >/dev/null 2>&1; then
+    echo "Flutter is not available in this terminal."
+    echo "Run: source ~/.zshrc"
+    exit 1
+  fi
+}
+
+prepare_project() {
+  require_flutter
+  flutter pub get
+}
+
+wait_for_android() {
+  if [[ ! -x "$ADB_PATH" ]]; then
+    echo "ADB was not found at $ADB_PATH"
+    exit 1
+  fi
+
+  for _ in {1..90}; do
+    local device_id
+    device_id="$(android_device_id)"
+    if [[ -n "$device_id" ]] &&
+      [[ "$("$ADB_PATH" -s "$device_id" shell getprop sys.boot_completed 2>/dev/null || true)" == "1" ]]; then
+      return
+    fi
+    sleep 2
+  done
+
+  echo "Android Emulator did not finish booting within three minutes."
+  exit 1
+}
+
+android_device_id() {
+  "$ADB_PATH" devices | awk '/^emulator-[0-9]+[[:space:]]+device$/ { print $1; exit }'
+}
+
+run_android() {
+  prepare_project
+  local device_id
+  device_id="$(android_device_id)"
+  if [[ -z "$device_id" ]]; then
+    echo "Starting Android Emulator: $ANDROID_AVD_NAME"
+    flutter emulators --launch "$ANDROID_AVD_NAME"
+    sleep 3
+    if [[ -z "$(android_device_id)" ]]; then
+      echo "Flutter launcher did not start the AVD; using the Android emulator directly."
+      "$ANDROID_SDK_PATH/emulator/emulator" -avd "$ANDROID_AVD_NAME" \
+        >"/private/tmp/$ANDROID_AVD_NAME.log" 2>&1 &
+    fi
+    wait_for_android
+    device_id="$(android_device_id)"
+  fi
+
+  if [[ -z "$device_id" ]]; then
+    echo "Flutter could not find the Android Emulator."
+    exit 1
+  fi
+
+  echo "Launching Clever Compress on $device_id"
+  flutter run -d "$device_id"
+}
+
+boot_ios() {
+  open -a Simulator
+  xcrun simctl bootstatus booted -b
+}
+
+ios_device_id() {
+  xcrun simctl list devices booted |
+    sed -nE 's/.*\(([0-9A-F-]{36})\) \(Booted\).*/\1/p' |
+    sed -n '1p'
+}
+
+run_ios() {
+  prepare_project
+  echo "Starting iOS Simulator"
+  boot_ios
+  local device_id
+  device_id="$(ios_device_id)"
+  if [[ -z "$device_id" ]]; then
+    echo "Flutter could not find a booted iOS Simulator."
+    exit 1
+  fi
+
+  echo "Launching Clever Compress on $device_id"
+  flutter run -d "$device_id"
+}
+
+run_checks() {
+  prepare_project
+  dart format --output=none --set-exit-if-changed lib test
+  flutter analyze
+  flutter test
+}
+
+build_apps() {
+  prepare_project
+  flutter build apk --debug
+  flutter build ios --simulator --debug
+}
+
+show_help() {
+  cat <<'HELP'
+Clever Compress developer commands
+
+  ./dev android   Start Android Emulator and run the app
+  ./dev ios       Start iOS Simulator and run the app
+  ./dev check     Check formatting, analyze code, and run tests
+  ./dev build     Build Android debug APK and iOS Simulator app
+  ./dev devices   Show configured and connected devices
+  ./dev doctor    Check the complete Flutter toolchain
+  ./dev setup     Download project packages
+
+While `./dev android` or `./dev ios` is running:
+  r  Hot reload Dart/UI changes
+  R  Hot restart the application
+  q  Stop the application
+HELP
+}
+
+case "${1:-help}" in
+  android)
+    run_android
+    ;;
+  ios)
+    run_ios
+    ;;
+  check)
+    run_checks
+    ;;
+  build)
+    build_apps
+    ;;
+  devices)
+    require_flutter
+    flutter emulators
+    flutter devices
+    ;;
+  doctor)
+    require_flutter
+    flutter doctor -v
+    ;;
+  setup)
+    prepare_project
+    ;;
+  help|-h|--help)
+    show_help
+    ;;
+  *)
+    echo "Unknown command: $1"
+    echo
+    show_help
+    exit 2
+    ;;
+esac

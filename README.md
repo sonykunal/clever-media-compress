@@ -70,6 +70,10 @@ flutter test
 flutter run
 ```
 
+For the configured development Mac, use the one-command daily workflow in
+[DEVELOPMENT.md](DEVELOPMENT.md): `./dev android`, `./dev ios`, `./dev check`,
+and `./dev build`.
+
 This workspace uses Flutter 3.44.8 / Dart 3.12.2. The current host has Android
 SDK 37, Android Studio's bundled JDK, Xcode 26.6, and CocoaPods 1.17.0. Flutter
 analysis and tests pass, and both the Android debug APK and iOS Simulator app
