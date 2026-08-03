@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../domain/media_asset.dart';
@@ -9,8 +10,31 @@ class MediaPickerService {
   MediaPickerService({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
 
   final ImagePicker _picker;
+  static const _nativeChannel = MethodChannel('clever_media_compress/media');
 
   Future<List<SelectedMedia>> pickMedia() async {
+    if (Platform.isAndroid) {
+      final response = await _nativeChannel.invokeListMethod<dynamic>(
+        'pickMedia',
+      );
+      if (response == null) return const [];
+      final nativeDetails = <String, Map<String, dynamic>>{};
+      final files = <XFile>[];
+      for (final item in response) {
+        final details = Map<String, dynamic>.from(item as Map);
+        final path = details['path'] as String;
+        files.add(
+          XFile(
+            path,
+            name: details['name'] as String?,
+            mimeType: details['mimeType'] as String?,
+          ),
+        );
+        nativeDetails[path] = details;
+      }
+      return _mapFiles(files, nativeDetails: nativeDetails);
+    }
+
     final files = await _picker.pickMultipleMedia(
       requestFullMetadata: true,
       limit: 100,
@@ -24,10 +48,14 @@ class MediaPickerService {
     return _mapFiles(response.files!);
   }
 
-  Future<List<SelectedMedia>> _mapFiles(List<XFile> files) async {
+  Future<List<SelectedMedia>> _mapFiles(
+    List<XFile> files, {
+    Map<String, Map<String, dynamic>> nativeDetails = const {},
+  }) async {
     final mapped = <SelectedMedia>[];
     for (var index = 0; index < files.length; index++) {
       final file = files[index];
+      final details = nativeDetails[file.path];
       final stat = await File(file.path).stat();
       final kind = _mediaKind(file);
       int? width;
@@ -58,6 +86,9 @@ class MediaPickerService {
           mimeType: file.mimeType,
           width: width,
           height: height,
+          sourceUri: details?['sourceUri'] as String?,
+          sourceRelativePath: details?['sourceRelativePath'] as String?,
+          sourceCaptureMillis: details?['sourceCaptureMillis'] as int?,
         ),
       );
     }
@@ -67,7 +98,24 @@ class MediaPickerService {
   MediaKind _mediaKind(XFile file) {
     if (file.mimeType?.startsWith('video/') ?? false) return MediaKind.video;
     final extension = file.name.split('.').last.toLowerCase();
-    const videoExtensions = {'mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', '3gp'};
+    const videoExtensions = {
+      'mp4',
+      'mov',
+      'm4v',
+      '3gp',
+      '3g2',
+      'mkv',
+      'webm',
+      'avi',
+      'ts',
+      'mts',
+      'm2ts',
+      'mpeg',
+      'mpg',
+      'vob',
+      'wmv',
+      'flv',
+    };
     return videoExtensions.contains(extension)
         ? MediaKind.video
         : MediaKind.image;

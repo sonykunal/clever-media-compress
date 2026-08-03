@@ -25,7 +25,33 @@ class ComparisonPreview extends StatefulWidget {
 }
 
 class _ComparisonPreviewState extends State<ComparisonPreview> {
+  final TransformationController _transformationController =
+      TransformationController();
   double _split = .5;
+  double _zoom = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformationController.addListener(_syncZoom);
+  }
+
+  @override
+  void didUpdateWidget(covariant ComparisonPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.media.id != widget.media.id) {
+      _split = .5;
+      _setZoom(1);
+    }
+  }
+
+  @override
+  void dispose() {
+    _transformationController
+      ..removeListener(_syncZoom)
+      ..dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +61,10 @@ class _ComparisonPreviewState extends State<ComparisonPreview> {
         : ((1 - preview.byteSize / widget.media.byteSize) * 100)
               .clamp(0, 99)
               .round();
+    final originalSize = Formatters.fileSize(widget.media.byteSize);
+    final estimatedSize = preview == null
+        ? 'Calculating...'
+        : Formatters.fileSize(preview.byteSize);
 
     return Card(
       child: Padding(
@@ -46,21 +76,25 @@ class _ComparisonPreviewState extends State<ComparisonPreview> {
               children: [
                 const MagicIconBadge(size: 40, iconSize: 20),
                 const SizedBox(width: 11),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Live comparison',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      SizedBox(height: 3),
                       Text(
-                        'Drag to compare before and after',
-                        style: TextStyle(color: AppColors.muted, fontSize: 12),
+                        'Previewing ${widget.media.name}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
@@ -100,149 +134,225 @@ class _ComparisonPreviewState extends State<ComparisonPreview> {
                   aspectRatio: 4 / 3,
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final width = constraints.maxWidth;
-                      return GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onHorizontalDragUpdate: (details) {
-                          setState(() {
-                            _split = (details.localPosition.dx / width).clamp(
-                              .05,
-                              .95,
-                            );
-                          });
-                        },
-                        onTapDown: (details) {
-                          setState(() {
-                            _split = (details.localPosition.dx / width).clamp(
-                              .05,
-                              .95,
-                            );
-                          });
-                        },
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            const ColoredBox(color: Color(0xFF161622)),
-                            if (preview != null)
-                              Image.memory(
-                                preview.bytes,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
-                              )
-                            else
-                              Image.file(
-                                File(widget.media.path),
-                                fit: BoxFit.cover,
-                              ),
-                            ClipRect(
-                              clipper: _WidthClipper(_split),
-                              child: Image.file(
-                                File(widget.media.path),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            const Positioned(
-                              left: 12,
-                              top: 12,
-                              child: _PreviewLabel(text: 'ORIGINAL'),
-                            ),
-                            const Positioned(
-                              right: 12,
-                              top: 12,
-                              child: _PreviewLabel(text: 'COMPRESSED'),
-                            ),
-                            Positioned(
-                              left: width * _split - 1,
-                              top: 0,
-                              bottom: 0,
-                              child: Container(width: 2, color: Colors.white),
-                            ),
-                            Positioned(
-                              left: width * _split - 19,
-                              top: constraints.maxHeight / 2 - 19,
-                              child: Container(
-                                width: 38,
-                                height: 38,
-                                decoration: BoxDecoration(
-                                  color: AppColors.ink,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
+                      final viewport = Size(
+                        constraints.maxWidth,
+                        constraints.maxHeight,
+                      );
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          const ColoredBox(color: Color(0xFF161622)),
+                          _ZoomableImageLayer(
+                            viewport: viewport,
+                            controller: _transformationController,
+                            child: preview != null
+                                ? Image.memory(
+                                    preview.bytes,
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                  )
+                                : Image.file(
+                                    File(widget.media.path),
+                                    fit: BoxFit.cover,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.brand.withValues(
-                                        alpha: .28,
+                          ),
+                          ClipRect(
+                            clipper: _WidthClipper(_split),
+                            child: IgnorePointer(
+                              child: _ZoomableImageLayer(
+                                viewport: viewport,
+                                controller: _transformationController,
+                                child: preview != null
+                                    ? Image.file(
+                                        File(widget.media.path),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Image.file(
+                                        File(widget.media.path),
+                                        fit: BoxFit.cover,
                                       ),
-                                      blurRadius: 12,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.auto_fix_high_rounded,
-                                  size: 19,
-                                  color: AppColors.brandBright,
-                                ),
                               ),
                             ),
-                            if (widget.loading)
-                              ColoredBox(
-                                color: Colors.black.withValues(alpha: .35),
-                                child: const Center(
-                                  child: SizedBox.square(
-                                    dimension: 32,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 3,
-                                      color: Colors.white,
-                                    ),
+                          ),
+                          Positioned(
+                            left: 12,
+                            top: 12,
+                            child: _PreviewLabel(
+                              title: 'ORIGINAL',
+                              size: originalSize,
+                            ),
+                          ),
+                          Positioned(
+                            right: 12,
+                            top: 12,
+                            child: _PreviewLabel(
+                              title: 'COMPRESSED',
+                              size: estimatedSize,
+                            ),
+                          ),
+                          Positioned(
+                            left: 12,
+                            bottom: 12,
+                            child: _InlineZoomControls(
+                              zoom: _zoom,
+                              onZoomOut: _zoom <= 1.01
+                                  ? null
+                                  : () => _setZoom(_zoom - .5),
+                              onZoomIn: _zoom >= 4.99
+                                  ? null
+                                  : () => _setZoom(_zoom + .5),
+                            ),
+                          ),
+                          Positioned(
+                            right: 12,
+                            bottom: 12,
+                            child: _InlineResetButton(
+                              enabled: _zoom > 1.01,
+                              onPressed: () => _setZoom(1),
+                            ),
+                          ),
+                          Positioned(
+                            left: constraints.maxWidth * _split - 18,
+                            top: 0,
+                            bottom: 0,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragUpdate: (details) {
+                                _setSplit(
+                                  constraints.maxWidth * _split +
+                                      details.delta.dx,
+                                  viewport,
+                                );
+                              },
+                              child: const SizedBox(
+                                width: 36,
+                                child: Center(
+                                  child: VerticalDivider(
+                                    width: 2,
+                                    thickness: 2,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                          ),
+                          Positioned(
+                            left: constraints.maxWidth * _split - 19,
+                            top: constraints.maxHeight / 2 - 19,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragUpdate: (details) {
+                                _setSplit(
+                                  constraints.maxWidth * _split +
+                                      details.delta.dx,
+                                  viewport,
+                                );
+                              },
+                              child: const _DividerHandle(),
+                            ),
+                          ),
+                          if (widget.loading)
+                            ColoredBox(
+                              color: Colors.black.withValues(alpha: .35),
+                              child: const Center(
+                                child: SizedBox.square(
+                                  dimension: 32,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       );
                     },
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 13),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.violetMist,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.violetSoft),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _SizeMetric(
-                      label: 'Original',
-                      value: Formatters.fileSize(widget.media.byteSize),
-                    ),
-                  ),
-                  const Icon(
-                    Icons.auto_fix_high_rounded,
-                    color: AppColors.brand,
-                    size: 17,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _SizeMetric(
-                      label: 'Estimated output',
-                      value: preview == null
-                          ? 'Calculating…'
-                          : Formatters.fileSize(preview.byteSize),
-                      alignEnd: true,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _setSplit(double localDx, Size viewport) {
+    setState(() {
+      _split = (localDx / viewport.width).clamp(.05, .95);
+    });
+  }
+
+  void _setZoom(double value) {
+    final next = value.clamp(1.0, 5.0);
+    _transformationController.value = Matrix4.identity()
+      ..scaleByDouble(next, next, next, 1);
+    if (mounted) setState(() => _zoom = next);
+  }
+
+  void _syncZoom() {
+    final scale = _transformationController.value.getMaxScaleOnAxis().clamp(
+      1.0,
+      5.0,
+    );
+    if (!mounted || (scale - _zoom).abs() < .02) return;
+    setState(() => _zoom = scale);
+  }
+}
+
+class _ZoomableImageLayer extends StatelessWidget {
+  const _ZoomableImageLayer({
+    required this.viewport,
+    required this.controller,
+    required this.child,
+  });
+
+  final Size viewport;
+  final TransformationController controller;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return InteractiveViewer(
+      transformationController: controller,
+      minScale: 1,
+      maxScale: 5,
+      panEnabled: true,
+      scaleEnabled: true,
+      boundaryMargin: EdgeInsets.zero,
+      clipBehavior: Clip.hardEdge,
+      child: SizedBox(
+        width: viewport.width,
+        height: viewport.height,
+        child: child,
+      ),
+    );
+  }
+}
+
+class _DividerHandle extends StatelessWidget {
+  const _DividerHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brand.withValues(alpha: .28),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.auto_fix_high_rounded,
+        size: 19,
+        color: AppColors.brandBright,
       ),
     );
   }
@@ -262,63 +372,133 @@ class _WidthClipper extends CustomClipper<Rect> {
 }
 
 class _PreviewLabel extends StatelessWidget {
-  const _PreviewLabel({required this.text});
+  const _PreviewLabel({required this.title, required this.size});
 
-  final String text;
+  final String title;
+  final String size;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xA6000000),
-        borderRadius: BorderRadius.circular(8),
+        color: const Color(0xB3FFFFFF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0x80FFFFFF)),
       ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 9,
-          fontWeight: FontWeight.w800,
-          letterSpacing: .7,
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.ink,
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .7,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            size,
+            style: const TextStyle(
+              color: AppColors.brandDark,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SizeMetric extends StatelessWidget {
-  const _SizeMetric({
-    required this.label,
-    required this.value,
-    this.alignEnd = false,
+class _InlineZoomControls extends StatelessWidget {
+  const _InlineZoomControls({
+    required this.zoom,
+    required this.onZoomOut,
+    required this.onZoomIn,
   });
 
-  final String label;
-  final String value;
-  final bool alignEnd;
+  final double zoom;
+  final VoidCallback? onZoomOut;
+  final VoidCallback? onZoomIn;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: alignEnd
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          label,
-          style: const TextStyle(color: AppColors.muted, fontSize: 11),
+        _OverlayIconButton(
+          tooltip: 'Zoom out',
+          icon: Icons.remove_rounded,
+          onPressed: onZoomOut,
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: const TextStyle(
-            color: AppColors.ink,
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-          ),
+        const SizedBox(width: 6),
+        _OverlayIconButton(
+          tooltip: 'Zoom in',
+          icon: Icons.add_rounded,
+          onPressed: onZoomIn,
         ),
       ],
+    );
+  }
+}
+
+class _InlineResetButton extends StatelessWidget {
+  const _InlineResetButton({required this.enabled, required this.onPressed});
+
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: enabled ? onPressed : null,
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.brandDark,
+        disabledForegroundColor: AppColors.muted.withValues(alpha: .65),
+        backgroundColor: const Color(0xB3FFFFFF),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+      icon: const Icon(Icons.center_focus_strong_outlined, size: 15),
+      label: const Text(
+        'Reset',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+}
+
+class _OverlayIconButton extends StatelessWidget {
+  const _OverlayIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      iconSize: 16,
+      color: AppColors.brandDark,
+      disabledColor: AppColors.muted.withValues(alpha: .55),
+      style: IconButton.styleFrom(
+        backgroundColor: const Color(0xB3FFFFFF),
+        minimumSize: const Size.square(31),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
     );
   }
 }

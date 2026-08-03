@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/compress/data/media_picker_service.dart';
+import 'features/compress/data/media_permission_service.dart';
 import 'features/compress/data/platform_media_service.dart';
 import 'features/compress/data/preview_service.dart';
 import 'features/compress/presentation/compress_controller.dart';
@@ -22,6 +23,7 @@ class _CleverCompressAppState extends State<CleverCompressApp> {
     super.initState();
     _controller = CompressController(
       picker: MediaPickerService(),
+      permissionService: MediaPermissionService(),
       previewService: PreviewService(),
       platformService: PlatformMediaService(),
     )..initialize();

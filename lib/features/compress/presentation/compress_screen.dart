@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/magic_accents.dart';
+import '../domain/compression_result.dart';
 import 'compress_controller.dart';
 import 'widgets/comparison_preview.dart';
 import 'widgets/compression_controls.dart';
@@ -50,6 +51,18 @@ class CompressScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                         ],
+                        if (controller.permissionMessage != null) ...[
+                          _PermissionBanner(
+                            message: controller.permissionMessage!,
+                            canOpenSettings:
+                                controller.canOpenPermissionSettings,
+                            onAllow: () => controller.requestFullMediaAccess(),
+                            onOpenSettings: () =>
+                                controller.openPermissionSettings(),
+                            onDismiss: controller.dismissPermissionMessage,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         HeroPanel(
                           hasMedia: controller.hasMedia,
                           selecting: controller.selecting,
@@ -69,8 +82,17 @@ class CompressScreen extends StatelessWidget {
                             media: controller.media,
                             results: controller.results,
                             processing: controller.processing,
+                            previewMediaId: controller.previewMedia?.id,
+                            onPreviewSelect: controller.selectPreviewMedia,
                             onRemove: controller.removeMedia,
                           ),
+                          if (controller.hasCompletedBatch) ...[
+                            const SizedBox(height: 14),
+                            _CompletionBanner(
+                              results: controller.results,
+                              onNewBatch: controller.clearMedia,
+                            ),
+                          ],
                           if (controller.previewMedia != null) ...[
                             const SizedBox(height: 20),
                             ComparisonPreview(
@@ -81,10 +103,21 @@ class CompressScreen extends StatelessWidget {
                           ],
                           const SizedBox(height: 16),
                           CompressionControls(
-                            settings: controller.settings,
+                            imageRecipe: controller.settings.image,
+                            videoRecipe: controller.settings.video,
+                            imageCount: controller.imageCount,
+                            videoCount: controller.videoCount,
+                            preserveMetadata:
+                                controller.settings.preserveMetadata,
+                            preserveLocation:
+                                controller.settings.preserveLocation,
                             enabled: !controller.processing,
-                            onQualityChanged: controller.setQuality,
-                            onResolutionChanged: controller.setResolutionScale,
+                            onImageQualityChanged: controller.setImageQuality,
+                            onImageResolutionChanged:
+                                controller.setImageResolutionScale,
+                            onVideoQualityChanged: controller.setVideoQuality,
+                            onVideoResolutionChanged:
+                                controller.setVideoResolutionScale,
                             onMetadataChanged: controller.setPreserveMetadata,
                             onLocationChanged: controller.setPreserveLocation,
                           ),
@@ -390,6 +423,151 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
+class _PermissionBanner extends StatelessWidget {
+  const _PermissionBanner({
+    required this.message,
+    required this.canOpenSettings,
+    required this.onAllow,
+    required this.onOpenSettings,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final bool canOpenSettings;
+  final VoidCallback onAllow;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F0FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE4D1FF)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.photo_library_outlined,
+            color: AppColors.brand,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 12,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: onAllow,
+                      icon: const Icon(Icons.verified_user_outlined, size: 16),
+                      label: const Text('Allow full access'),
+                    ),
+                    if (canOpenSettings)
+                      TextButton.icon(
+                        onPressed: onOpenSettings,
+                        icon: const Icon(Icons.settings_outlined, size: 16),
+                        label: const Text('Open settings'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onDismiss,
+            icon: const Icon(Icons.close_rounded, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompletionBanner extends StatelessWidget {
+  const _CompletionBanner({required this.results, required this.onNewBatch});
+
+  final Map<String, CompressionResult> results;
+  final VoidCallback onNewBatch;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = results.values
+        .where((item) => item.status == CompressionJobStatus.completed)
+        .length;
+    final verified = results.values
+        .where(
+          (item) =>
+              item.status == CompressionJobStatus.completed &&
+              item.captureDateVerified,
+        )
+        .length;
+    final failed = results.values
+        .where((item) => item.status == CompressionJobStatus.failed)
+        .length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFECFDF3),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFA6F4C5)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: const BoxDecoration(
+              color: AppColors.success,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_rounded, color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Compression complete',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$completed saved • $verified date verified'
+                  '${failed > 0 ? ' • $failed failed' : ''}',
+                  style: const TextStyle(
+                    color: Color(0xFF067647),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(onPressed: onNewBatch, child: const Text('New batch')),
+        ],
+      ),
+    );
+  }
+}
+
 class _BatchActionBar extends StatelessWidget {
   const _BatchActionBar({required this.controller});
 
@@ -397,6 +575,7 @@ class _BatchActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final completed = controller.hasCompletedBatch;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -448,14 +627,22 @@ class _BatchActionBar extends StatelessWidget {
                 const SizedBox(height: 10),
               ],
               FilledButton.icon(
-                onPressed: controller.processing ? null : controller.startBatch,
+                onPressed: completed
+                    ? controller.clearMedia
+                    : controller.canStartBatch
+                    ? controller.startBatch
+                    : null,
                 icon: Icon(
-                  controller.processing
+                  completed
+                      ? Icons.check_circle_outline_rounded
+                      : controller.processing
                       ? Icons.hourglass_top_rounded
                       : Icons.auto_awesome_rounded,
                 ),
                 label: Text(
-                  controller.processing
+                  completed
+                      ? 'Start a new batch'
+                      : controller.processing
                       ? 'Compression in progress'
                       : 'Compress ${Formatters.plural(controller.media.length, 'item')}',
                 ),

@@ -18,7 +18,7 @@ class HeroPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (hasMedia) {
-      return _SelectedHero(selecting: selecting, onSelect: onSelect);
+      return const _SelectedHero();
     }
 
     return Container(
@@ -114,11 +114,7 @@ class HeroPanel extends StatelessWidget {
                             ? Icons.add_photo_alternate_outlined
                             : Icons.auto_fix_high_rounded,
                       ),
-                label: Text(
-                  hasMedia
-                      ? 'Choose different media'
-                      : 'Choose photos & videos',
-                ),
+                label: Text('Choose photos & videos'),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.ink,
                   foregroundColor: Colors.white,
@@ -135,10 +131,7 @@ class HeroPanel extends StatelessWidget {
 }
 
 class _SelectedHero extends StatelessWidget {
-  const _SelectedHero({required this.selecting, required this.onSelect});
-
-  final bool selecting;
-  final VoidCallback onSelect;
+  const _SelectedHero();
 
   @override
   Widget build(BuildContext context) {
@@ -156,59 +149,35 @@ class _SelectedHero extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
+      child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const MagicIconBadge(size: 46, iconSize: 22, inverted: true),
-              const SizedBox(width: 13),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Smaller media.\nSame moment.',
-                      style: TextStyle(
-                        color: AppColors.ink,
-                        fontSize: 21,
-                        height: 1.03,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -.5,
-                      ),
-                    ),
-                    SizedBox(height: 7),
-                    Text(
-                      'Compress a whole batch while keeping the capture date that your gallery uses for sorting.',
-                      style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                  ],
+          MagicIconBadge(size: 46, iconSize: 22, inverted: true),
+          SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Smaller media.\nSame moment.',
+                  style: TextStyle(
+                    color: AppColors.ink,
+                    fontSize: 21,
+                    height: 1.03,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -.5,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          OutlinedButton.icon(
-            onPressed: selecting ? null : onSelect,
-            icon: selecting
-                ? const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.add_photo_alternate_outlined, size: 19),
-            label: const Text('Choose different media'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.ink,
-              minimumSize: const Size.fromHeight(48),
-              side: const BorderSide(color: AppColors.borderStrong),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
+                SizedBox(height: 7),
+                Text(
+                  'Compress a whole batch while keeping the capture date that your gallery uses for sorting.',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -10,6 +10,9 @@ class SelectedMedia {
     this.mimeType,
     this.width,
     this.height,
+    this.sourceUri,
+    this.sourceRelativePath,
+    this.sourceCaptureMillis,
   });
 
   final String id;
@@ -20,6 +23,9 @@ class SelectedMedia {
   final String? mimeType;
   final int? width;
   final int? height;
+  final String? sourceUri;
+  final String? sourceRelativePath;
+  final int? sourceCaptureMillis;
 
   bool get isImage => kind == MediaKind.image;
   String get extension {

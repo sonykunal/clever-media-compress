@@ -12,14 +12,18 @@ class PlatformMediaService {
     CompressionSettings settings,
   ) async {
     try {
+      final recipe = settings.recipeFor(media.kind);
       final response = await _channel
           .invokeMapMethod<String, dynamic>('compressAndPublish', {
             'sourceId': media.id,
             'sourcePath': media.path,
             'sourceName': media.name,
+            'sourceUri': media.sourceUri,
+            'sourceRelativePath': media.sourceRelativePath,
+            'sourceCaptureMillis': media.sourceCaptureMillis,
             'mediaKind': media.kind.name,
-            'quality': settings.quality,
-            'resolutionScale': settings.resolutionScale,
+            'quality': recipe.quality,
+            'resolutionScale': recipe.resolutionScale,
             'preserveMetadata': settings.preserveMetadata,
             'preserveLocation': settings.preserveLocation,
             'outputSuffix': settings.outputSuffix,

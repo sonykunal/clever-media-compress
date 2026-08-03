@@ -1,0 +1,8 @@
+---
+description: Mandatory Clever Media Compress repository policy
+alwaysApply: true
+---
+
+Read and follow `AGENTS.md` at the repository root before planning or changing
+code. Treat every requirement there as acceptance criteria. Do not duplicate or
+override that policy in this file.

@@ -9,20 +9,24 @@ The repository now contains a working product shell and the first native image
 compression engine:
 
 - Multi-photo/video selection with Android lost-selection recovery.
-- A quality slider (20–95%) and 100%, 75%, or 50% resolution presets.
+- Independent photo and video recipes: each media type has its own quality
+  slider (20–95%) and 100%, 75%, or 50% resolution presets in a mixed batch.
 - A draggable, live before/after preview for the first selected image.
 - Sequential batch state, per-item progress, failures, and output-size results.
-- Android JPEG compression in Kotlin with EXIF/XMP tag copying, optional GPS
-  removal, `MediaStore.DATE_TAKEN`, pending-file publication, and post-write
-  capture-date verification.
-- iOS JPEG compression in Swift/ImageIO with recognized metadata copying,
-  optional GPS removal, `PHAssetCreationRequest.creationDate`, original output
-  filename, and post-write capture-date verification.
+- Android image compression in Kotlin with EXIF/XMP tag copying, optional GPS
+  removal, `MediaStore.DATE_TAKEN`, same-folder MediaStore publication, and
+  post-write capture-date verification.
+- iOS image compression in Swift/ImageIO with recognized metadata copying,
+  optional GPS removal, `PHAssetCreationRequest.creationDate`, output filename,
+  and post-write capture-date verification.
+- Android video export through Media3 Transformer and iOS video export through
+  AVFoundation, with per-video quality/frame-size settings and output date
+  verification where the source container and platform expose it.
 - Flutter analyzer and domain/widget tests.
 
-Video jobs currently fail with an explicit "next engine milestone" result; they
-are not reported as successfully compressed. Android Media3 Transformer and iOS
-AVFoundation export are the planned video backends.
+See [docs/MEDIA_SUPPORT.md](docs/MEDIA_SUPPORT.md) for container, codec, and
+metadata limits. Device decoder support remains the final authority for a
+specific input file.
 
 ## The platform truth about “same directory”
 
@@ -31,14 +35,11 @@ publish a new `PHAsset`; Photos decides its physical storage. The app can keep
 the filename, capture date, location, and library chronology, but cannot place a
 file beside the original at a path that iOS does not expose.
 
-On Android 10+, Scoped Storage likewise requires publishing through MediaStore.
-The current picker intentionally grants selected-media access without broad
-library permission, but returns a private readable copy rather than a dependable
-original folder identifier. Therefore this milestone saves Android output to
-`Pictures/Clever Compress/`. A later optional “use original folder” mode can use
-a custom MediaStore picker/folder grant where the device permits it; the safe
-cross-platform contract is “same gallery, original date and modified filename,”
-not “same physical directory.”
+On Android 10+, Scoped Storage requires publishing through MediaStore. The
+Android picker retains the selected local MediaStore relative path and publishes
+the output into that same folder. Cloud-only providers do not expose a local
+directory; those items return a clear error rather than silently saving to a
+different location.
 
 ## Architecture
 

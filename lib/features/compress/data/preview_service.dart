@@ -22,7 +22,7 @@ class PreviewSnapshot {
 class PreviewService {
   Future<PreviewSnapshot> generate(
     SelectedMedia media,
-    CompressionSettings settings,
+    MediaCompressionRecipe recipe,
   ) async {
     if (!media.isImage) {
       throw const FormatException('Live preview is available for images.');
@@ -30,13 +30,13 @@ class PreviewService {
 
     final sourceWidth = media.width ?? 2400;
     final sourceHeight = media.height ?? 1800;
-    final targetWidth = (sourceWidth * settings.resolutionScale).round();
-    final targetHeight = (sourceHeight * settings.resolutionScale).round();
+    final targetWidth = (sourceWidth * recipe.resolutionScale).round();
+    final targetHeight = (sourceHeight * recipe.resolutionScale).round();
     final bytes = await FlutterImageCompress.compressWithFile(
       media.path,
       minWidth: targetWidth.clamp(1, sourceWidth).toInt(),
       minHeight: targetHeight.clamp(1, sourceHeight).toInt(),
-      quality: settings.quality,
+      quality: recipe.quality,
       autoCorrectionAngle: true,
       keepExif: false,
       format: CompressFormat.jpeg,
