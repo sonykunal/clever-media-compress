@@ -10,6 +10,7 @@ class SelectedMedia {
     this.mimeType,
     this.width,
     this.height,
+    this.thumbnailPath,
     this.sourceUri,
     this.sourceRelativePath,
     this.sourceCaptureMillis,
@@ -23,6 +24,7 @@ class SelectedMedia {
   final String? mimeType;
   final int? width;
   final int? height;
+  final String? thumbnailPath;
   final String? sourceUri;
   final String? sourceRelativePath;
   final int? sourceCaptureMillis;

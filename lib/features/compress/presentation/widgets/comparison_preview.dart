@@ -380,7 +380,7 @@ class _PreviewLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: const Color(0xB3FFFFFF),
         borderRadius: BorderRadius.circular(10),
@@ -398,12 +398,12 @@ class _PreviewLabel extends StatelessWidget {
               letterSpacing: .7,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 1),
           Text(
             size,
             style: const TextStyle(
               color: AppColors.brandDark,
-              fontSize: 11,
+              fontSize: 10.5,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -459,15 +459,15 @@ class _InlineResetButton extends StatelessWidget {
         foregroundColor: AppColors.brandDark,
         disabledForegroundColor: AppColors.muted.withValues(alpha: .65),
         backgroundColor: const Color(0xB3FFFFFF),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
-      icon: const Icon(Icons.center_focus_strong_outlined, size: 15),
+      icon: const Icon(Icons.center_focus_strong_outlined, size: 13),
       label: const Text(
         'Reset',
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900),
       ),
     );
   }
@@ -490,12 +490,12 @@ class _OverlayIconButton extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onPressed,
       icon: Icon(icon),
-      iconSize: 16,
+      iconSize: 15,
       color: AppColors.brandDark,
       disabledColor: AppColors.muted.withValues(alpha: .55),
       style: IconButton.styleFrom(
         backgroundColor: const Color(0xB3FFFFFF),
-        minimumSize: const Size.square(31),
+        minimumSize: const Size.square(28),
         padding: EdgeInsets.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),

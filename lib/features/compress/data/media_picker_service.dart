@@ -60,6 +60,7 @@ class MediaPickerService {
       final kind = _mediaKind(file);
       int? width;
       int? height;
+      String? thumbnailPath;
 
       if (kind == MediaKind.image) {
         try {
@@ -74,6 +75,8 @@ class MediaPickerService {
           // A selectable image can still be compressed natively even when the
           // Flutter preview codec does not support its source format.
         }
+      } else {
+        thumbnailPath = await _createVideoThumbnail(file.path);
       }
 
       mapped.add(
@@ -86,6 +89,7 @@ class MediaPickerService {
           mimeType: file.mimeType,
           width: width,
           height: height,
+          thumbnailPath: thumbnailPath,
           sourceUri: details?['sourceUri'] as String?,
           sourceRelativePath: details?['sourceRelativePath'] as String?,
           sourceCaptureMillis: details?['sourceCaptureMillis'] as int?,
@@ -93,6 +97,16 @@ class MediaPickerService {
       );
     }
     return mapped;
+  }
+
+  Future<String?> _createVideoThumbnail(String path) async {
+    try {
+      return await _nativeChannel.invokeMethod<String>('createVideoThumbnail', {
+        'sourcePath': path,
+      });
+    } catch (_) {
+      return null;
+    }
   }
 
   MediaKind _mediaKind(XFile file) {

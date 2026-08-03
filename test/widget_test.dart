@@ -30,6 +30,17 @@ void main() {
     expect(changed.outputSuffix, '_compressed');
   });
 
+  test(
+    'video output estimate uses quality and resolution without overpromising',
+    () {
+      const recipe = MediaCompressionRecipe(quality: 50, resolutionScale: .5);
+      final estimated = recipe.estimateOutputBytes(20 * 1024 * 1024);
+
+      expect(estimated, 2621440);
+      expect(estimated, lessThan(20 * 1024 * 1024));
+    },
+  );
+
   test('media permission channel payload is parsed consistently', () {
     final result = MediaAccessResult.fromMap({
       'status': 'limited',

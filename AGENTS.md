@@ -71,6 +71,14 @@ These rules apply to every change. Treat them as acceptance criteria.
 
 ## UX, permissions, and privacy
 
+- Optimize for zero avoidable user friction: keep screens responsive, transitions
+  predictable, controls easy to understand, and every action immediate or visibly
+  progressing. Never leave the user guessing whether a tap worked, whether work
+  is still running, or what to do next.
+- Prevent jank, freezes, accidental duplicate actions, lost selections, and
+  surprising navigation. Preserve state where practical, make cancellation and
+  retry safe, and provide concise actionable feedback for slow, denied, failed,
+  or partially completed operations.
 - Keep the same information hierarchy, selection flow, batch order, preview
   meaning, defaults, validation, progress, and result language on both platforms.
 - Follow platform picker and permission conventions. Request the minimum access

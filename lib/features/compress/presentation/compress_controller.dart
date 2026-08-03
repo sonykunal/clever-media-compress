@@ -52,15 +52,9 @@ class CompressController extends ChangeNotifier {
   bool get hasMedia => _media.isNotEmpty;
   int get totalInputBytes => _media.fold(0, (sum, item) => sum + item.byteSize);
   SelectedMedia? get previewMedia {
-    if (_previewMediaId != null) {
-      for (final item in _media) {
-        if (item.id == _previewMediaId && item.isImage) return item;
-      }
-    }
-    for (final item in _media) {
-      if (item.isImage) return item;
-    }
-    return null;
+    final selected = _mediaById(_previewMediaId);
+    if (selected != null) return selected;
+    return _media.isEmpty ? null : _media.first;
   }
 
   bool get hasCompletedBatch =>
@@ -93,7 +87,7 @@ class CompressController extends ChangeNotifier {
       final recovered = await picker.recoverLostMedia();
       if (recovered.isNotEmpty) {
         _media.addAll(recovered);
-        _previewMediaId = _firstImageId(recovered);
+        _previewMediaId = _firstMediaId(recovered);
         notifyListeners();
         await _generatePreview();
       }
@@ -122,7 +116,7 @@ class CompressController extends ChangeNotifier {
         _media
           ..clear()
           ..addAll(selected);
-        _previewMediaId = _firstImageId(selected);
+        _previewMediaId = _firstMediaId(selected);
         _results.clear();
         _preview = null;
         notifyListeners();
@@ -141,7 +135,7 @@ class CompressController extends ChangeNotifier {
     _media.removeWhere((item) => item.id == id);
     _results.remove(id);
     if (_previewMediaId == id || previewMedia == null) {
-      _previewMediaId = _firstImageId(_media);
+      _previewMediaId = _firstMediaId(_media);
       _preview = null;
       _schedulePreview();
     }
@@ -155,6 +149,7 @@ class CompressController extends ChangeNotifier {
     _results.clear();
     _previewMediaId = null;
     _preview = null;
+    _previewGeneration++;
     _errorMessage = null;
     notifyListeners();
   }
@@ -214,12 +209,19 @@ class CompressController extends ChangeNotifier {
 
   void selectPreviewMedia(String id) {
     if (_processing) return;
-    final selected = _media.where((item) => item.id == id && item.isImage);
-    if (selected.isEmpty || _previewMediaId == id) return;
+    final selected = _mediaById(id);
+    if (selected == null || _previewMediaId == id) return;
+    _previewGeneration++;
     _previewMediaId = id;
     _preview = null;
     notifyListeners();
-    _generatePreview();
+    if (selected.isImage) {
+      _generatePreview();
+    } else {
+      _previewDebounce?.cancel();
+      _previewing = false;
+      notifyListeners();
+    }
   }
 
   void dismissError() {
@@ -317,6 +319,11 @@ class CompressController extends ChangeNotifier {
 
   void _schedulePreview() {
     _previewDebounce?.cancel();
+    if (previewMedia?.isImage != true) {
+      _previewGeneration++;
+      _previewing = false;
+      return;
+    }
     _previewDebounce = Timer(
       const Duration(milliseconds: 320),
       _generatePreview,
@@ -325,17 +332,21 @@ class CompressController extends ChangeNotifier {
 
   Future<void> _generatePreview() async {
     final item = previewMedia;
-    if (item == null) return;
+    if (item == null || !item.isImage) {
+      _preview = null;
+      _previewing = false;
+      return;
+    }
     final generation = ++_previewGeneration;
     _previewing = true;
     notifyListeners();
     try {
       final result = await previewService.generate(item, _settings.image);
-      if (generation == _previewGeneration) {
+      if (generation == _previewGeneration && previewMedia?.id == item.id) {
         _preview = result;
       }
     } catch (error) {
-      if (generation == _previewGeneration) {
+      if (generation == _previewGeneration && previewMedia?.id == item.id) {
         _preview = null;
         _errorMessage = 'A live preview is unavailable for ${item.name}.';
       }
@@ -353,9 +364,17 @@ class CompressController extends ChangeNotifier {
     super.dispose();
   }
 
-  String? _firstImageId(Iterable<SelectedMedia> items) {
+  SelectedMedia? _mediaById(String? id) {
+    if (id == null) return null;
+    for (final item in _media) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  String? _firstMediaId(Iterable<SelectedMedia> items) {
     for (final item in items) {
-      if (item.isImage) return item.id;
+      return item.id;
     }
     return null;
   }

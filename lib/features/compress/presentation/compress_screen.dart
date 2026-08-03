@@ -9,6 +9,7 @@ import 'widgets/comparison_preview.dart';
 import 'widgets/compression_controls.dart';
 import 'widgets/hero_panel.dart';
 import 'widgets/media_strip.dart';
+import 'widgets/video_preview_card.dart';
 
 class CompressScreen extends StatelessWidget {
   const CompressScreen({super.key, required this.controller});
@@ -95,11 +96,17 @@ class CompressScreen extends StatelessWidget {
                           ],
                           if (controller.previewMedia != null) ...[
                             const SizedBox(height: 20),
-                            ComparisonPreview(
-                              media: controller.previewMedia!,
-                              preview: controller.preview,
-                              loading: controller.previewing,
-                            ),
+                            if (controller.previewMedia!.isImage)
+                              ComparisonPreview(
+                                media: controller.previewMedia!,
+                                preview: controller.preview,
+                                loading: controller.previewing,
+                              )
+                            else
+                              VideoPreviewCard(
+                                media: controller.previewMedia!,
+                                recipe: controller.settings.video,
+                              ),
                           ],
                           const SizedBox(height: 16),
                           CompressionControls(

@@ -40,9 +40,7 @@ class MediaStrip extends StatelessWidget {
             media: item,
             result: results[item.id],
             selectedForPreview: item.id == previewMediaId,
-            onPreviewSelect: item.isImage
-                ? () => onPreviewSelect(item.id)
-                : null,
+            onPreviewSelect: () => onPreviewSelect(item.id),
             onRemove: processing ? null : () => onRemove(item.id),
           );
         },
@@ -79,7 +77,7 @@ class _MediaTile extends StatelessWidget {
               selected: selectedForPreview,
               label: media.isImage
                   ? '${media.name}, preview image'
-                  : '${media.name}, video',
+                  : '${media.name}, preview video frame',
               child: GestureDetector(
                 onTap: onPreviewSelect,
                 child: AnimatedContainer(
@@ -118,16 +116,8 @@ class _MediaTile extends StatelessWidget {
                                     icon: Icons.image_not_supported_outlined,
                                   ),
                                 )
-                              : const _TypeIcon(
-                                  icon: Icons.play_circle_outline_rounded,
-                                ),
+                              : _VideoTileContent(media: media),
                         ),
-                        if (selectedForPreview)
-                          const Positioned(
-                            left: 7,
-                            top: 7,
-                            child: _PreviewDot(),
-                          ),
                         if (result?.status == CompressionJobStatus.processing)
                           const ColoredBox(
                             color: Color(0x66000000),
@@ -216,28 +206,6 @@ class _MediaTile extends StatelessWidget {
   }
 }
 
-class _PreviewDot extends StatelessWidget {
-  const _PreviewDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 24,
-      height: 24,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.brand, width: 2),
-      ),
-      child: const Icon(
-        Icons.visibility_outlined,
-        color: AppColors.brand,
-        size: 13,
-      ),
-    );
-  }
-}
-
 class _TypeIcon extends StatelessWidget {
   const _TypeIcon({required this.icon});
 
@@ -246,6 +214,64 @@ class _TypeIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(child: Icon(icon, color: AppColors.brand, size: 33));
+  }
+}
+
+class _VideoTileContent extends StatelessWidget {
+  const _VideoTileContent({required this.media});
+
+  final SelectedMedia media;
+
+  @override
+  Widget build(BuildContext context) {
+    final thumbnailPath = media.thumbnailPath;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (thumbnailPath != null)
+          Image.file(
+            File(thumbnailPath),
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const _VideoFallback(),
+          )
+        else
+          const _VideoFallback(),
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x22000000), Color(0x55000000)],
+            ),
+          ),
+        ),
+        const Positioned(left: 7, bottom: 7, child: _VideoBadge()),
+      ],
+    );
+  }
+}
+
+class _VideoFallback extends StatelessWidget {
+  const _VideoFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.violetMist, AppColors.violetSoft],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.movie_creation_outlined,
+          color: AppColors.brand,
+          size: 32,
+        ),
+      ),
+    );
   }
 }
 
@@ -266,6 +292,38 @@ class _StatusDot extends StatelessWidget {
         border: Border.all(color: Colors.white, width: 2),
       ),
       child: Icon(icon, color: Colors.white, size: 14),
+    );
+  }
+}
+
+class _VideoBadge extends StatelessWidget {
+  const _VideoBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .88),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: .9)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.videocam_rounded, size: 11, color: AppColors.brand),
+          SizedBox(width: 3),
+          Text(
+            'VIDEO',
+            style: TextStyle(
+              color: AppColors.ink,
+              fontSize: 8,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .7,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

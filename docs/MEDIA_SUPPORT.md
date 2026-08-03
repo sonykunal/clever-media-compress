@@ -27,6 +27,12 @@ Common MP4, MOV, M4V, 3GP, 3G2, MKV, WebM, AVI, MPEG/MPG, TS/MTS/M2TS, VOB,
 WMV and FLV inputs are recognized. A file can be transcoded only when the device
 has a decoder for its internal video/audio codecs.
 
+- Video thumbnails are generated natively into small temporary JPEG cache files:
+  Android uses `MediaMetadataRetriever`, and iOS uses `AVAssetImageGenerator`.
+- Selecting a video in the batch shows that thumbnail as a lightweight preview
+  frame plus estimated output size, quality, frame scale and MP4 output format.
+  The app does not transcode a hidden video preview before submit, because that
+  would increase battery, heat and temporary storage for multi-item batches.
 - Android uses Jetpack Media3 Transformer with hardware codecs.
 - iOS uses AVAssetExportSession with a compatible system export preset.
 - Output is standardized to MP4/H.264/AAC when supported. iOS falls back to MOV

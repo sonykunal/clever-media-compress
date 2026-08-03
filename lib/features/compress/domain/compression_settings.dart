@@ -9,6 +9,22 @@ class MediaCompressionRecipe {
 
   int get reductionPercent => 100 - quality;
 
+  /// Lightweight preview estimate used before expensive native video export.
+  ///
+  /// Real video output size depends on the source codec, motion, audio tracks
+  /// and the device encoder. This intentionally stays conservative and only
+  /// communicates an estimate in the UI.
+  int estimateOutputBytes(int inputBytes) {
+    if (inputBytes <= 0) return 0;
+    final qualityRatio = quality.clamp(1, 100) / 100;
+    final sizeRatio = resolutionScale.clamp(.1, 1.0);
+    final estimatedRatio = (qualityRatio * sizeRatio * sizeRatio).clamp(
+      .08,
+      1.0,
+    );
+    return (inputBytes * estimatedRatio).round();
+  }
+
   MediaCompressionRecipe copyWith({int? quality, double? resolutionScale}) {
     return MediaCompressionRecipe(
       quality: quality ?? this.quality,

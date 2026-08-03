@@ -42,6 +42,11 @@ private final class ChronologyMediaEngine {
         requestMediaLibraryAccess(result: result)
       case "openAppSettings":
         openAppSettings(result: result)
+      case "createVideoThumbnail":
+        queue.async {
+          let path = createVideoThumbnail(arguments: call.arguments)
+          DispatchQueue.main.async { result(path) }
+        }
       case "compressAndPublish":
         queue.async {
           do {
@@ -112,6 +117,43 @@ private final class ChronologyMediaEngine {
       "message": message,
       "canOpenSettings": normalized != "full",
     ]
+  }
+
+  private static func createVideoThumbnail(arguments: Any?) -> String? {
+    guard let values = arguments as? [String: Any],
+          let sourcePath = values["sourcePath"] as? String,
+          !sourcePath.isEmpty else { return nil }
+    let sourceURL = URL(fileURLWithPath: sourcePath)
+    let asset = AVURLAsset(url: sourceURL)
+    let generator = AVAssetImageGenerator(asset: asset)
+    generator.appliesPreferredTrackTransform = true
+    generator.maximumSize = CGSize(width: 360, height: 360)
+
+    do {
+      let image = try generator.copyCGImage(
+        at: CMTime(seconds: 1, preferredTimescale: 600),
+        actualTime: nil
+      )
+      let outputURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent("clever-video-thumb-\(UUID().uuidString)")
+        .appendingPathExtension("jpg")
+      let destination = CGImageDestinationCreateWithURL(
+        outputURL as CFURL,
+        UTType.jpeg.identifier as CFString,
+        1,
+        nil
+      )
+      guard let destination else { return nil }
+      CGImageDestinationAddImage(
+        destination,
+        image,
+        [kCGImageDestinationLossyCompressionQuality: 0.76] as CFDictionary
+      )
+      guard CGImageDestinationFinalize(destination) else { return nil }
+      return outputURL.path
+    } catch {
+      return nil
+    }
   }
 
   private static func compressAndPublish(arguments: Any?) throws -> [String: Any] {

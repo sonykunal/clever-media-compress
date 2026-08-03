@@ -72,6 +72,14 @@ class MainActivity : FlutterActivity() {
                 "pickMedia" -> launchMediaPicker(result)
                 "requestMediaLibraryAccess" -> requestMediaLibraryAccess(result)
                 "openAppSettings" -> openAppSettings(result)
+                "createVideoThumbnail" -> worker.execute {
+                    try {
+                        val path = createVideoThumbnail(call)
+                        runOnUiThread { result.success(path) }
+                    } catch (_: Throwable) {
+                        runOnUiThread { result.success(null) }
+                    }
+                }
                 "compressAndPublish" -> worker.execute {
                     try {
                         val payload = compressAndPublish(call)
@@ -499,6 +507,38 @@ class MainActivity : FlutterActivity() {
             "image" -> compressImageAndPublish(call)
             "video" -> compressVideoAndPublish(call)
             else -> failure("Unsupported media category: $kind")
+        }
+    }
+
+    private fun createVideoThumbnail(call: MethodCall): String? {
+        val sourcePath = requiredString(call, "sourcePath")
+        val source = File(sourcePath)
+        if (!source.isFile) return null
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(source.absolutePath)
+            val frame = retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.frameAtTime
+                ?: return null
+            val scale = minOf(1.0, 360.0 / max(frame.width, frame.height).coerceAtLeast(1))
+            val thumbnail = if (scale < 1.0) {
+                Bitmap.createScaledBitmap(
+                    frame,
+                    max(1, (frame.width * scale).roundToInt()),
+                    max(1, (frame.height * scale).roundToInt()),
+                    true,
+                ).also { frame.recycle() }
+            } else {
+                frame
+            }
+            val output = File.createTempFile("clever-video-thumb-", ".jpg", cacheDir)
+            FileOutputStream(output).use { stream ->
+                thumbnail.compress(Bitmap.CompressFormat.JPEG, 76, stream)
+            }
+            thumbnail.recycle()
+            output.absolutePath
+        } finally {
+            retriever.release()
         }
     }
 
