@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -25,6 +26,9 @@ class VideoPreviewCard extends StatelessWidget {
         ? 0
         : ((1 - estimatedBytes / media.byteSize) * 100).clamp(0, 99).round();
     final scalePercent = (recipe.resolutionScale * 100).round();
+    final visualLoss = _estimatedVisualLoss(recipe);
+    final blurSigma = visualLoss * 3.2;
+    final overlayOpacity = .08 + visualLoss * .24;
 
     return Card(
       child: Padding(
@@ -76,7 +80,27 @@ class VideoPreviewCard extends StatelessWidget {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      _VideoFrame(media: media),
+                      Row(
+                        children: [
+                          Expanded(child: _VideoFrame(media: media)),
+                          Expanded(
+                            child: _EstimatedVideoFrame(
+                              media: media,
+                              blurSigma: blurSigma,
+                              overlayOpacity: overlayOpacity,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Positioned.fill(
+                        child: Center(
+                          child: VerticalDivider(
+                            width: 2,
+                            thickness: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
                       const DecoratedBox(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -88,7 +112,7 @@ class VideoPreviewCard extends StatelessWidget {
                       ),
                       const Positioned(
                         left: 12,
-                        top: 75,
+                        top: 76,
                         child: _PreviewFrameBadge(),
                       ),
                       Positioned(
@@ -140,7 +164,7 @@ class VideoPreviewCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Preview frame only. Final video compression happens on submit. MP4 is used when supported.',
+              'Estimated frame preview only. Final video compression happens on submit. MP4 is used when supported.',
               style: TextStyle(
                 color: AppColors.muted,
                 fontSize: 12,
@@ -151,6 +175,12 @@ class VideoPreviewCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  double _estimatedVisualLoss(MediaCompressionRecipe recipe) {
+    final qualityLoss = 1 - recipe.quality.clamp(1, 100) / 100;
+    final frameLoss = 1 - recipe.resolutionScale.clamp(.1, 1.0);
+    return (qualityLoss * .62 + frameLoss * .38).clamp(0.0, 1.0);
   }
 }
 
@@ -193,6 +223,42 @@ class _VideoFallback extends StatelessWidget {
           size: 54,
         ),
       ),
+    );
+  }
+}
+
+class _EstimatedVideoFrame extends StatelessWidget {
+  const _EstimatedVideoFrame({
+    required this.media,
+    required this.blurSigma,
+    required this.overlayOpacity,
+  });
+
+  final SelectedMedia media;
+  final double blurSigma;
+  final double overlayOpacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 140),
+          child: ImageFiltered(
+            key: ValueKey('${blurSigma.toStringAsFixed(2)}-$overlayOpacity'),
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: blurSigma,
+              sigmaY: blurSigma,
+            ),
+            child: _VideoFrame(media: media),
+          ),
+        ),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          color: AppColors.brand.withValues(alpha: overlayOpacity),
+        ),
+      ],
     );
   }
 }
@@ -253,12 +319,16 @@ class _SavedPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: AppColors.violetSoft),
       ),
-      child: Text(
-        '~$savedPercent% smaller',
-        style: const TextStyle(
-          color: AppColors.brandDark,
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 140),
+        child: Text(
+          '~$savedPercent% smaller',
+          key: ValueKey(savedPercent),
+          style: const TextStyle(
+            color: AppColors.brandDark,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
     );
@@ -294,12 +364,16 @@ class _PreviewLabel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 3),
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.brandDark,
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 140),
+            child: Text(
+              value,
+              key: ValueKey(value),
+              style: const TextStyle(
+                color: AppColors.brandDark,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],

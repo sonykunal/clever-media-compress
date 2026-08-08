@@ -31,6 +31,8 @@ has a decoder for its internal video/audio codecs.
   Android uses `MediaMetadataRetriever`, and iOS uses `AVAssetImageGenerator`.
 - Selecting a video in the batch shows that thumbnail as a lightweight preview
   frame plus estimated output size, quality, frame scale and MP4 output format.
+  The preview frame uses an estimated visual softness/overlay that changes with
+  the video recipe so users can see settings react before export.
   The app does not transcode a hidden video preview before submit, because that
   would increase battery, heat and temporary storage for multi-item batches.
 - Android uses Jetpack Media3 Transformer with hardware codecs.
