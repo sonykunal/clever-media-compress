@@ -65,6 +65,10 @@ picker. Android does not let apps force this setting; when a user chooses
 limited access or denies the prompt, the app shows an in-app action that opens
 its system permission screen.
 
+On Android 13+, media selection uses the system Photo Picker gallery UI so the
+flow feels like a native photo attachment grid. Older Android versions, or
+devices without that picker activity, fall back to the system document picker.
+
 For local Gallery/Camera items, Android resolution tries the direct picker URI,
 the backing MediaStore document URI, and then an unambiguous local MediaStore
 match by filename and size. A filename-only match is accepted only when every

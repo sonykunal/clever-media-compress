@@ -2,6 +2,7 @@ package com.clevermedia.clever_media_compress
 
 import android.app.Activity
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.content.ContentUris
 import android.content.ContentValues
@@ -53,6 +54,7 @@ import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 @UnstableApi
@@ -209,6 +211,27 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openMediaPicker() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            openAndroidPhotoPicker()
+            return
+        }
+        openDocumentMediaPicker()
+    }
+
+    private fun openAndroidPhotoPicker() {
+        val maxItems = min(100, MediaStore.getPickImagesMaxLimit())
+        val intent = Intent(MediaStore.ACTION_PICK_IMAGES).apply {
+            putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, maxItems)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        try {
+            startActivityForResult(intent, PICK_MEDIA_REQUEST)
+        } catch (_: ActivityNotFoundException) {
+            openDocumentMediaPicker()
+        }
+    }
+
+    private fun openDocumentMediaPicker() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"

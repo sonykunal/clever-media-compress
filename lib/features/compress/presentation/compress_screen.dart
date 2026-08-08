@@ -11,15 +11,22 @@ import 'widgets/hero_panel.dart';
 import 'widgets/media_strip.dart';
 import 'widgets/video_preview_card.dart';
 
-class CompressScreen extends StatelessWidget {
+class CompressScreen extends StatefulWidget {
   const CompressScreen({super.key, required this.controller});
 
   final CompressController controller;
 
   @override
+  State<CompressScreen> createState() => _CompressScreenState();
+}
+
+class _CompressScreenState extends State<CompressScreen> {
+  bool _previewScrollLocked = false;
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: widget.controller,
       builder: (context, _) {
         return Scaffold(
           body: DecoratedBox(
@@ -33,100 +40,111 @@ class CompressScreen extends StatelessWidget {
             child: SafeArea(
               bottom: false,
               child: CustomScrollView(
-                key: ValueKey(controller.hasMedia),
+                key: ValueKey(widget.controller.hasMedia),
+                physics: _previewScrollLocked
+                    ? const NeverScrollableScrollPhysics()
+                    : const BouncingScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(
                     child: _AppHeader(
-                      hasMedia: controller.hasMedia,
-                      onClear: controller.clearMedia,
+                      hasMedia: widget.controller.hasMedia,
+                      onClear: widget.controller.clearMedia,
                     ),
                   ),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(18, 6, 18, 140),
                     sliver: SliverList.list(
                       children: [
-                        if (controller.errorMessage != null) ...[
+                        if (widget.controller.errorMessage != null) ...[
                           _ErrorBanner(
-                            message: controller.errorMessage!,
-                            onDismiss: controller.dismissError,
+                            message: widget.controller.errorMessage!,
+                            onDismiss: widget.controller.dismissError,
                           ),
                           const SizedBox(height: 12),
                         ],
-                        if (controller.permissionMessage != null) ...[
+                        if (widget.controller.permissionMessage != null) ...[
                           _PermissionBanner(
-                            message: controller.permissionMessage!,
+                            message: widget.controller.permissionMessage!,
                             canOpenSettings:
-                                controller.canOpenPermissionSettings,
-                            onAllow: () => controller.requestFullMediaAccess(),
+                                widget.controller.canOpenPermissionSettings,
+                            onAllow: () =>
+                                widget.controller.requestFullMediaAccess(),
                             onOpenSettings: () =>
-                                controller.openPermissionSettings(),
-                            onDismiss: controller.dismissPermissionMessage,
+                                widget.controller.openPermissionSettings(),
+                            onDismiss:
+                                widget.controller.dismissPermissionMessage,
                           ),
                           const SizedBox(height: 12),
                         ],
                         HeroPanel(
-                          hasMedia: controller.hasMedia,
-                          selecting: controller.selecting,
-                          onSelect: controller.selectMedia,
+                          hasMedia: widget.controller.hasMedia,
+                          selecting: widget.controller.selecting,
+                          onSelect: widget.controller.selectMedia,
                         ),
                         const SizedBox(height: 22),
-                        if (!controller.hasMedia)
+                        if (!widget.controller.hasMedia)
                           const _PromiseGrid()
                         else ...[
                           _SelectionHeader(
-                            count: controller.media.length,
-                            totalBytes: controller.totalInputBytes,
-                            onAdd: controller.selectMedia,
+                            count: widget.controller.media.length,
+                            totalBytes: widget.controller.totalInputBytes,
+                            onAdd: widget.controller.selectMedia,
                           ),
                           const SizedBox(height: 12),
                           MediaStrip(
-                            media: controller.media,
-                            results: controller.results,
-                            processing: controller.processing,
-                            previewMediaId: controller.previewMedia?.id,
-                            onPreviewSelect: controller.selectPreviewMedia,
-                            onRemove: controller.removeMedia,
+                            media: widget.controller.media,
+                            results: widget.controller.results,
+                            processing: widget.controller.processing,
+                            previewMediaId: widget.controller.previewMedia?.id,
+                            onPreviewSelect:
+                                widget.controller.selectPreviewMedia,
+                            onRemove: widget.controller.removeMedia,
                           ),
-                          if (controller.hasCompletedBatch) ...[
+                          if (widget.controller.hasCompletedBatch) ...[
                             const SizedBox(height: 14),
                             _CompletionBanner(
-                              results: controller.results,
-                              onNewBatch: controller.clearMedia,
+                              results: widget.controller.results,
+                              onNewBatch: widget.controller.clearMedia,
                             ),
                           ],
-                          if (controller.previewMedia != null) ...[
+                          if (widget.controller.previewMedia != null) ...[
                             const SizedBox(height: 20),
-                            if (controller.previewMedia!.isImage)
+                            if (widget.controller.previewMedia!.isImage)
                               ComparisonPreview(
-                                media: controller.previewMedia!,
-                                preview: controller.preview,
-                                loading: controller.previewing,
+                                media: widget.controller.previewMedia!,
+                                preview: widget.controller.preview,
+                                loading: widget.controller.previewing,
+                                onScrollLockChanged: _setPreviewScrollLocked,
                               )
                             else
                               VideoPreviewCard(
-                                media: controller.previewMedia!,
-                                recipe: controller.settings.video,
+                                media: widget.controller.previewMedia!,
+                                recipe: widget.controller.settings.video,
                               ),
                           ],
                           const SizedBox(height: 16),
                           CompressionControls(
-                            imageRecipe: controller.settings.image,
-                            videoRecipe: controller.settings.video,
-                            imageCount: controller.imageCount,
-                            videoCount: controller.videoCount,
+                            imageRecipe: widget.controller.settings.image,
+                            videoRecipe: widget.controller.settings.video,
+                            imageCount: widget.controller.imageCount,
+                            videoCount: widget.controller.videoCount,
                             preserveMetadata:
-                                controller.settings.preserveMetadata,
+                                widget.controller.settings.preserveMetadata,
                             preserveLocation:
-                                controller.settings.preserveLocation,
-                            enabled: !controller.processing,
-                            onImageQualityChanged: controller.setImageQuality,
+                                widget.controller.settings.preserveLocation,
+                            enabled: !widget.controller.processing,
+                            onImageQualityChanged:
+                                widget.controller.setImageQuality,
                             onImageResolutionChanged:
-                                controller.setImageResolutionScale,
-                            onVideoQualityChanged: controller.setVideoQuality,
+                                widget.controller.setImageResolutionScale,
+                            onVideoQualityChanged:
+                                widget.controller.setVideoQuality,
                             onVideoResolutionChanged:
-                                controller.setVideoResolutionScale,
-                            onMetadataChanged: controller.setPreserveMetadata,
-                            onLocationChanged: controller.setPreserveLocation,
+                                widget.controller.setVideoResolutionScale,
+                            onMetadataChanged:
+                                widget.controller.setPreserveMetadata,
+                            onLocationChanged:
+                                widget.controller.setPreserveLocation,
                           ),
                           const SizedBox(height: 16),
                           const _OutputPromise(),
@@ -138,12 +156,17 @@ class CompressScreen extends StatelessWidget {
               ),
             ),
           ),
-          bottomNavigationBar: controller.hasMedia
-              ? _BatchActionBar(controller: controller)
+          bottomNavigationBar: widget.controller.hasMedia
+              ? _BatchActionBar(controller: widget.controller)
               : null,
         );
       },
     );
+  }
+
+  void _setPreviewScrollLocked(bool locked) {
+    if (_previewScrollLocked == locked || !mounted) return;
+    setState(() => _previewScrollLocked = locked);
   }
 }
 
