@@ -6,9 +6,11 @@ import '../data/media_picker_service.dart';
 import '../data/media_permission_service.dart';
 import '../data/platform_media_service.dart';
 import '../data/preview_service.dart';
+import '../domain/batch_completion_summary.dart';
 import '../domain/compression_result.dart';
 import '../domain/compression_settings.dart';
 import '../domain/media_asset.dart';
+import '../domain/safe_reclaim_policy.dart';
 
 class CompressController extends ChangeNotifier {
   CompressController({
@@ -26,6 +28,7 @@ class CompressController extends ChangeNotifier {
   final PlatformMediaService platformService;
 
   final List<SelectedMedia> _media = [];
+  final List<SelectedMedia> _pendingReclaimMedia = [];
   final Map<String, CompressionResult> _results = {};
   CompressionSettings _settings = const CompressionSettings();
   PreviewSnapshot? _preview;
@@ -35,9 +38,13 @@ class CompressController extends ChangeNotifier {
   bool _selecting = false;
   bool _previewing = false;
   bool _processing = false;
+  bool _reclaiming = false;
+  bool _originalsReclaimed = false;
   String? _errorMessage;
+  String? _reclaimMessage;
   String? _permissionMessage;
   bool _canOpenPermissionSettings = false;
+  BatchCompletionSummary? _completionSummary;
 
   List<SelectedMedia> get media => List.unmodifiable(_media);
   Map<String, CompressionResult> get results => Map.unmodifiable(_results);
@@ -46,11 +53,20 @@ class CompressController extends ChangeNotifier {
   bool get selecting => _selecting;
   bool get previewing => _previewing;
   bool get processing => _processing;
+  bool get reclaiming => _reclaiming;
+  bool get originalsReclaimed => _originalsReclaimed;
   String? get errorMessage => _errorMessage;
   String? get permissionMessage => _permissionMessage;
+  String? get reclaimMessage => _reclaimMessage;
   bool get canOpenPermissionSettings => _canOpenPermissionSettings;
+  BatchCompletionSummary? get completionSummary => _completionSummary;
   bool get hasMedia => _media.isNotEmpty;
   int get totalInputBytes => _media.fold(0, (sum, item) => sum + item.byteSize);
+  List<SelectedMedia> get reclaimableMedia => List.unmodifiable(
+    _completionSummary == null ? _eligibleActiveMedia() : _pendingReclaimMedia,
+  );
+  int get reclaimableBytes =>
+      reclaimableMedia.fold(0, (total, media) => total + media.byteSize);
   SelectedMedia? get previewMedia {
     final selected = _mediaById(_previewMediaId);
     if (selected != null) return selected;
@@ -84,12 +100,14 @@ class CompressController extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       await requestFullMediaAccess(silentWhenFull: true);
+      final shared = await picker.consumeSharedMedia();
+      if (shared.isNotEmpty) {
+        await _replaceSelection(shared);
+        return;
+      }
       final recovered = await picker.recoverLostMedia();
       if (recovered.isNotEmpty) {
-        _media.addAll(recovered);
-        _previewMediaId = _firstMediaId(recovered);
-        notifyListeners();
-        await _generatePreview();
+        await _replaceSelection(recovered);
       }
     } catch (_) {
       // Lost-data recovery is opportunistic and should not block app startup.
@@ -97,7 +115,7 @@ class CompressController extends ChangeNotifier {
   }
 
   Future<void> selectMedia() async {
-    if (_selecting || _processing) return;
+    if (_selecting || _processing || _reclaiming) return;
     _selecting = true;
     _errorMessage = null;
     notifyListeners();
@@ -113,14 +131,7 @@ class CompressController extends ChangeNotifier {
       }
       final selected = await picker.pickMedia();
       if (selected.isNotEmpty) {
-        _media
-          ..clear()
-          ..addAll(selected);
-        _previewMediaId = _firstMediaId(selected);
-        _results.clear();
-        _preview = null;
-        notifyListeners();
-        await _generatePreview();
+        await _replaceSelection(selected);
       }
     } catch (error) {
       _errorMessage = 'Could not open your media library. $error';
@@ -130,8 +141,19 @@ class CompressController extends ChangeNotifier {
     }
   }
 
+  Future<void> consumeSharedMedia() async {
+    if (_selecting || _processing || _reclaiming) return;
+    try {
+      final shared = await picker.consumeSharedMedia();
+      if (shared.isNotEmpty) await _replaceSelection(shared);
+    } catch (error) {
+      _errorMessage = 'Shared media could not be opened. $error';
+      notifyListeners();
+    }
+  }
+
   void removeMedia(String id) {
-    if (_processing) return;
+    if (_processing || _reclaiming) return;
     _media.removeWhere((item) => item.id == id);
     _results.remove(id);
     if (_previewMediaId == id || previewMedia == null) {
@@ -143,7 +165,7 @@ class CompressController extends ChangeNotifier {
   }
 
   void clearMedia() {
-    if (_processing) return;
+    if (_processing || _reclaiming) return;
     _previewDebounce?.cancel();
     _media.clear();
     _results.clear();
@@ -151,6 +173,16 @@ class CompressController extends ChangeNotifier {
     _preview = null;
     _previewGeneration++;
     _errorMessage = null;
+    _reclaimMessage = null;
+    _originalsReclaimed = false;
+    notifyListeners();
+  }
+
+  void dismissCompletion() {
+    _completionSummary = null;
+    _pendingReclaimMedia.clear();
+    _reclaimMessage = null;
+    _originalsReclaimed = false;
     notifyListeners();
   }
 
@@ -279,7 +311,17 @@ class CompressController extends ChangeNotifier {
       notifyListeners();
     }
 
-    _processing = false;
+    final inputCount = _media.length;
+    final completed = _results.values
+        .where((item) => item.status == CompressionJobStatus.completed)
+        .length;
+    final verified = _results.values
+        .where(
+          (item) =>
+              item.status == CompressionJobStatus.completed &&
+              item.captureDateVerified,
+        )
+        .length;
     final failures = _results.values
         .where((item) => item.status == CompressionJobStatus.failed)
         .length;
@@ -290,6 +332,7 @@ class CompressController extends ChangeNotifier {
               !item.captureDateVerified,
         )
         .length;
+    String? issueMessage;
     if (failures > 0 || unverified > 0) {
       final messages = <String>[];
       if (failures > 0) {
@@ -312,9 +355,45 @@ class CompressController extends ChangeNotifier {
           '$unverified item${unverified == 1 ? '' : 's'} had no verifiable capture date',
         );
       }
-      _errorMessage = '${messages.join('. ')}.';
+      issueMessage = '${messages.join('. ')}.';
     }
+
+    final eligible = _eligibleActiveMedia();
+    _pendingReclaimMedia
+      ..clear()
+      ..addAll(eligible);
+    _completionSummary = BatchCompletionSummary(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      inputCount: inputCount,
+      savedCount: completed,
+      verifiedCount: verified,
+      needsReviewCount: unverified,
+      failedCount: failures,
+      reclaimableCount: eligible.length,
+      reclaimableBytes: eligible.fold(0, (sum, media) => sum + media.byteSize),
+      issueMessage: issueMessage,
+    );
+    _processing = false;
+    _resetActiveBatch();
     notifyListeners();
+  }
+
+  Future<void> reclaimOriginals() async {
+    final eligible = reclaimableMedia;
+    if (_reclaiming || _processing || _originalsReclaimed || eligible.isEmpty) {
+      return;
+    }
+    _reclaiming = true;
+    _reclaimMessage = null;
+    notifyListeners();
+    try {
+      final result = await platformService.reclaimOriginals(eligible);
+      _originalsReclaimed = result.success && result.reclaimedCount > 0;
+      _reclaimMessage = result.message;
+    } finally {
+      _reclaiming = false;
+      notifyListeners();
+    }
   }
 
   void _schedulePreview() {
@@ -383,5 +462,36 @@ class CompressController extends ChangeNotifier {
     if (_results.isEmpty || _processing) return;
     _results.clear();
     _errorMessage = null;
+    _reclaimMessage = null;
+    _originalsReclaimed = false;
+  }
+
+  List<SelectedMedia> _eligibleActiveMedia() => _media
+      .where((media) => SafeReclaimPolicy.isEligible(media, _results[media.id]))
+      .toList(growable: false);
+
+  void _resetActiveBatch() {
+    _previewDebounce?.cancel();
+    _media.clear();
+    _results.clear();
+    _previewMediaId = null;
+    _preview = null;
+    _previewGeneration++;
+    _errorMessage = null;
+  }
+
+  Future<void> _replaceSelection(List<SelectedMedia> selected) async {
+    _completionSummary = null;
+    _pendingReclaimMedia.clear();
+    _media
+      ..clear()
+      ..addAll(selected);
+    _previewMediaId = _firstMediaId(selected);
+    _results.clear();
+    _preview = null;
+    _reclaimMessage = null;
+    _originalsReclaimed = false;
+    notifyListeners();
+    await _generatePreview();
   }
 }

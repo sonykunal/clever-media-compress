@@ -30,6 +30,8 @@ private final class ChronologyMediaEngine {
     label: "com.clevermedia.compress.engine",
     qos: .userInitiated
   )
+  private static var pickerCoordinator: MediaPickerCoordinator?
+  private static let appGroupIdentifier = "group.com.clevermedia.cleverMediaCompress"
 
   static func register(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
@@ -38,6 +40,28 @@ private final class ChronologyMediaEngine {
     )
     channel.setMethodCallHandler { call, result in
       switch call.method {
+      case "pickMedia":
+        presentMediaPicker(result: result)
+      case "consumeSharedMedia":
+        queue.async {
+          do {
+            let media = try consumeSharedMedia()
+            DispatchQueue.main.async { result(media) }
+          } catch {
+            DispatchQueue.main.async {
+              result(FlutterError(
+                code: "share_import_failed",
+                message: error.localizedDescription,
+                details: nil
+              ))
+            }
+          }
+        }
+      case "reclaimOriginals":
+        queue.async {
+          let payload = reclaimOriginals(arguments: call.arguments)
+          DispatchQueue.main.async { result(payload) }
+        }
       case "requestMediaLibraryAccess":
         requestMediaLibraryAccess(result: result)
       case "openAppSettings":
@@ -68,6 +92,165 @@ private final class ChronologyMediaEngine {
         result(FlutterMethodNotImplemented)
       }
     }
+  }
+
+  private static func presentMediaPicker(result: @escaping FlutterResult) {
+    let coordinator = MediaPickerCoordinator { response in
+      pickerCoordinator = nil
+      switch response {
+      case .success(let media): result(media)
+      case .failure(let error):
+        result(FlutterError(
+          code: "picker_import_failed",
+          message: error.localizedDescription,
+          details: nil
+        ))
+      }
+    }
+    pickerCoordinator = coordinator
+    do {
+      try coordinator.present()
+    } catch {
+      pickerCoordinator = nil
+      result(FlutterError(
+        code: "picker_unavailable",
+        message: error.localizedDescription,
+        details: nil
+      ))
+    }
+  }
+
+  private static func consumeSharedMedia() throws -> [[String: Any]] {
+    guard let groupURL = FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: appGroupIdentifier
+    ) else {
+      throw EngineError.sharedContainerUnavailable
+    }
+    let inboxURL = groupURL.appendingPathComponent("ShareInbox", isDirectory: true)
+    let manifestURL = inboxURL.appendingPathComponent("manifest.json")
+    guard FileManager.default.fileExists(atPath: manifestURL.path) else { return [] }
+
+    let data = try Data(contentsOf: manifestURL)
+    guard let manifest = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let items = manifest["items"] as? [[String: Any]] else {
+      throw EngineError.invalidShareManifest
+    }
+
+    let destinationRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("shared-media", isDirectory: true)
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: destinationRoot,
+      withIntermediateDirectories: true
+    )
+    var imported: [[String: Any]] = []
+    do {
+      for item in items {
+        guard let relativePath = item["relativePath"] as? String,
+              let sourceName = item["name"] as? String else {
+          throw EngineError.invalidShareManifest
+        }
+        let sourceURL = inboxURL.appendingPathComponent(relativePath).standardizedFileURL
+        let inboxPrefix = inboxURL.standardizedFileURL.path + "/"
+        guard sourceURL.path.hasPrefix(inboxPrefix),
+              FileManager.default.fileExists(atPath: sourceURL.path) else {
+          throw EngineError.invalidShareManifest
+        }
+        let safeName = safeSharedFilename(sourceName)
+        let destination = uniqueDestination(in: destinationRoot, name: safeName)
+        try FileManager.default.copyItem(at: sourceURL, to: destination)
+        let values = try destination.resourceValues(forKeys: [.fileSizeKey])
+        imported.append([
+          "path": destination.path,
+          "name": destination.lastPathComponent,
+          "mimeType": item["mimeType"] as? String ?? "application/octet-stream",
+          "byteSize": values.fileSize ?? 0,
+          "sourceAlbumIdentifiers": [],
+        ])
+      }
+      try? FileManager.default.removeItem(at: manifestURL)
+      if let batch = manifest["batchDirectory"] as? String {
+        let batchURL = inboxURL.appendingPathComponent(batch).standardizedFileURL
+        let inboxPrefix = inboxURL.standardizedFileURL.path + "/"
+        if batchURL.path.hasPrefix(inboxPrefix) {
+          try? FileManager.default.removeItem(at: batchURL)
+        }
+      }
+      return imported
+    } catch {
+      try? FileManager.default.removeItem(at: destinationRoot)
+      throw error
+    }
+  }
+
+  private static func reclaimOriginals(arguments: Any?) -> [String: Any] {
+    guard let values = arguments as? [String: Any],
+          let requested = values["items"] as? [[String: Any]],
+          !requested.isEmpty else {
+      return reclaimFailure("No verified originals were available to reclaim.")
+    }
+    let authorization = photoAuthorization()
+    guard authorization == .authorized || authorization == .limited else {
+      return reclaimFailure("Photos access is required to move originals to Recently Deleted.")
+    }
+    let identifiers = requested.compactMap { $0["sourceAssetIdentifier"] as? String }
+    guard identifiers.count == requested.count else {
+      return reclaimFailure("One or more originals could not be identified safely.")
+    }
+    let assets = PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil)
+    guard assets.count == identifiers.count else {
+      return reclaimFailure("One or more originals are no longer available in Photos.")
+    }
+
+    let reclaimedBytes = requested.reduce(Int64(0)) { total, item in
+      total + Int64((item["sourceBytes"] as? NSNumber)?.int64Value ?? 0)
+    }
+    let semaphore = DispatchSemaphore(value: 0)
+    var deletionError: Error?
+    PHPhotoLibrary.shared().performChanges {
+      PHAssetChangeRequest.deleteAssets(assets)
+    } completionHandler: { success, error in
+      if !success { deletionError = error ?? EngineError.photoDeleteFailed }
+      semaphore.signal()
+    }
+    semaphore.wait()
+    if let deletionError {
+      return reclaimFailure(deletionError.localizedDescription)
+    }
+    return [
+      "success": true,
+      "reclaimedCount": identifiers.count,
+      "reclaimedBytes": reclaimedBytes,
+      "message": "Originals moved to Recently Deleted. You can recover them in Photos.",
+    ]
+  }
+
+  private static func reclaimFailure(_ message: String) -> [String: Any] {
+    [
+      "success": false,
+      "reclaimedCount": 0,
+      "reclaimedBytes": 0,
+      "message": message,
+    ]
+  }
+
+  private static func safeSharedFilename(_ name: String) -> String {
+    let sanitized = name
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "\\", with: "_")
+      .replacingOccurrences(of: "\0", with: "_")
+    return sanitized.isEmpty ? "shared-media-\(UUID().uuidString)" : sanitized
+  }
+
+  private static func uniqueDestination(in directory: URL, name: String) -> URL {
+    let initial = directory.appendingPathComponent(name)
+    guard FileManager.default.fileExists(atPath: initial.path) else { return initial }
+    let base = (name as NSString).deletingPathExtension
+    let fileExtension = (name as NSString).pathExtension
+    let uniqueName = fileExtension.isEmpty
+      ? "\(base)-\(UUID().uuidString)"
+      : "\(base)-\(UUID().uuidString).\(fileExtension)"
+    return directory.appendingPathComponent(uniqueName)
   }
 
   private static func requestMediaLibraryAccess(result: @escaping FlutterResult) {
@@ -175,6 +358,8 @@ private final class ChronologyMediaEngine {
     let scale = min(max(number(values, "resolutionScale")?.doubleValue ?? 1, 0.25), 1)
     let preserveMetadata = bool(values, "preserveMetadata", fallback: true)
     let preserveLocation = bool(values, "preserveLocation", fallback: true)
+    let sourceAlbumIdentifiers = (values["sourceAlbumIdentifiers"] as? [Any])?
+      .compactMap { $0 as? String } ?? []
     let sourceURL = URL(fileURLWithPath: sourcePath)
 
     guard let imageSource = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
@@ -273,7 +458,8 @@ private final class ChronologyMediaEngine {
       outputName: outputName,
       creationDate: captureDate,
       location: location,
-      resourceType: .photo
+      resourceType: .photo,
+      albumIdentifiers: sourceAlbumIdentifiers
     )
     let galleryDateVerified = captureDate.map {
       verifyPublishedCreationDate(localIdentifier, expected: $0)
@@ -303,6 +489,8 @@ private final class ChronologyMediaEngine {
     let scale = min(max(number(values, "resolutionScale")?.doubleValue ?? 1, 0.25), 1)
     let preserveMetadata = bool(values, "preserveMetadata", fallback: true)
     let preserveLocation = bool(values, "preserveLocation", fallback: true)
+    let sourceAlbumIdentifiers = (values["sourceAlbumIdentifiers"] as? [Any])?
+      .compactMap { $0 as? String } ?? []
     let sourceURL = URL(fileURLWithPath: sourcePath)
     let asset = AVURLAsset(url: sourceURL)
     let galleryCaptureDate = number(values, "sourceCaptureMillis").map {
@@ -368,7 +556,8 @@ private final class ChronologyMediaEngine {
       outputName: outputName,
       creationDate: captureDate,
       location: location,
-      resourceType: .video
+      resourceType: .video,
+      albumIdentifiers: sourceAlbumIdentifiers
     )
     let galleryDateVerified = captureDate.map {
       verifyPublishedCreationDate(localIdentifier, expected: $0)
@@ -517,13 +706,18 @@ private final class ChronologyMediaEngine {
     outputName: String,
     creationDate: Date?,
     location: CLLocation?,
-    resourceType: PHAssetResourceType
+    resourceType: PHAssetResourceType,
+    albumIdentifiers: [String]
   ) throws -> String {
     let authorization = photoAuthorization()
     guard authorization == .authorized || authorization == .limited else {
       throw EngineError.photoAccessDenied
     }
 
+    let albums = PHAssetCollection.fetchAssetCollections(
+      withLocalIdentifiers: albumIdentifiers,
+      options: nil
+    )
     let semaphore = DispatchSemaphore(value: 0)
     var identifier: String?
     var publishError: Error?
@@ -534,7 +728,12 @@ private final class ChronologyMediaEngine {
       let options = PHAssetResourceCreationOptions()
       options.originalFilename = outputName
       request.addResource(with: resourceType, fileURL: fileURL, options: options)
-      identifier = request.placeholderForCreatedAsset?.localIdentifier
+      if let placeholder = request.placeholderForCreatedAsset {
+        identifier = placeholder.localIdentifier
+        albums.enumerateObjects { album, _, _ in
+          PHAssetCollectionChangeRequest(for: album)?.addAssets([placeholder] as NSArray)
+        }
+      }
     } completionHandler: { success, error in
       if !success { publishError = error ?? EngineError.photoPublishFailed }
       semaphore.signal()
@@ -700,6 +899,9 @@ private enum EngineError: LocalizedError {
   case photoAccessDenied
   case photoPublishFailed
   case videoExportFailed
+  case sharedContainerUnavailable
+  case invalidShareManifest
+  case photoDeleteFailed
 
   var errorDescription: String? {
     switch self {
@@ -719,6 +921,12 @@ private enum EngineError: LocalizedError {
       return "Photos could not publish the compressed copy."
     case .videoExportFailed:
       return "iOS could not transcode this video with an available export preset."
+    case .sharedContainerUnavailable:
+      return "The shared-media inbox is unavailable. Reinstall the app and try again."
+    case .invalidShareManifest:
+      return "The shared-media handoff was incomplete. Share the files again."
+    case .photoDeleteFailed:
+      return "Photos could not move the originals to Recently Deleted."
     }
   }
 }

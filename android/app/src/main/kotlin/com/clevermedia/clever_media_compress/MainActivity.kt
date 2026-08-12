@@ -21,6 +21,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.provider.BaseColumns
 import androidx.exifinterface.media.ExifInterface
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
@@ -62,6 +63,8 @@ class MainActivity : FlutterActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private var pendingPickerResult: MethodChannel.Result? = null
     private var pendingPermissionResult: MethodChannel.Result? = null
+    private var pendingReclaimResult: PendingReclaim? = null
+    private var pendingSharedIntent: Intent? = null
     private var waitingForMediaPermission = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -72,6 +75,8 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickMedia" -> launchMediaPicker(result)
+                "consumeSharedMedia" -> consumeSharedMedia(result)
+                "reclaimOriginals" -> reclaimOriginals(call, result)
                 "requestMediaLibraryAccess" -> requestMediaLibraryAccess(result)
                 "openAppSettings" -> openAppSettings(result)
                 "createVideoThumbnail" -> worker.execute {
@@ -99,6 +104,12 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.isMediaShareIntent()) pendingSharedIntent = intent
     }
 
     private fun launchMediaPicker(result: MethodChannel.Result) {
@@ -222,6 +233,10 @@ class MainActivity : FlutterActivity() {
         val maxItems = min(100, MediaStore.getPickImagesMaxLimit())
         val intent = Intent(MediaStore.ACTION_PICK_IMAGES).apply {
             putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, maxItems)
+            // Same-folder publishing is the product contract. Cloud picker items
+            // have no device directory, so do not offer media that can never
+            // satisfy that contract.
+            putExtra(Intent.EXTRA_LOCAL_ONLY, true)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         try {
@@ -246,6 +261,28 @@ class MainActivity : FlutterActivity() {
     @Deprecated("The Flutter activity still forwards this callback for ACTION_OPEN_DOCUMENT.")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == RECLAIM_MEDIA_REQUEST) {
+            val pending = pendingReclaimResult ?: return
+            pendingReclaimResult = null
+            if (resultCode == Activity.RESULT_OK) {
+                pending.result.success(
+                    reclaimPayload(
+                        success = true,
+                        count = pending.count,
+                        bytes = pending.bytes,
+                        message = "Originals moved to Android Trash. You can restore them from your gallery.",
+                    ),
+                )
+            } else {
+                pending.result.success(
+                    reclaimPayload(
+                        success = false,
+                        message = "Nothing was removed. Android's confirmation was cancelled.",
+                    ),
+                )
+            }
+            return
+        }
         if (requestCode != PICK_MEDIA_REQUEST) return
         val result = pendingPickerResult ?: return
         pendingPickerResult = null
@@ -277,6 +314,131 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun consumeSharedMedia(result: MethodChannel.Result) {
+        val sharedIntent = pendingSharedIntent
+            ?: intent?.takeIf { it.isMediaShareIntent() }
+        pendingSharedIntent = null
+        if (sharedIntent == null) {
+            result.success(emptyList<Map<String, Any?>>())
+            return
+        }
+        setIntent(Intent(this, MainActivity::class.java))
+        val uris = sharedIntent.sharedMediaUris()
+        if (uris.isEmpty()) {
+            result.error("empty_share", "No photos or videos were included in the share.", null)
+            return
+        }
+        worker.execute {
+            try {
+                val selected = uris.map { uri ->
+                    val mimeType = contentResolver.getType(uri).orEmpty()
+                    val displayName = queryString(uri, OpenableColumns.DISPLAY_NAME)
+                    require(isSupportedSharedMedia(mimeType, displayName)) {
+                        "${displayName ?: "Shared item"} is not a supported photo or video."
+                    }
+                    importPickedMedia(uri)
+                }
+                runOnUiThread { result.success(selected) }
+            } catch (error: Throwable) {
+                runOnUiThread {
+                    result.error(
+                        "share_import_failed",
+                        error.message ?: "Android could not open the shared media.",
+                        null,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun Intent.isMediaShareIntent(): Boolean =
+        action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
+
+    private fun isSupportedSharedMedia(mimeType: String, displayName: String?): Boolean {
+        if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) return true
+        val extension = displayName?.substringAfterLast('.', "")?.lowercase(Locale.US).orEmpty()
+        return extension in SHARED_MEDIA_EXTENSIONS
+    }
+
+    private fun Intent.sharedMediaUris(): List<Uri> = buildList {
+        clipData?.let { clips ->
+            for (index in 0 until clips.itemCount) add(clips.getItemAt(index).uri)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let(::add)
+            getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let(::addAll)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let(::add)
+            @Suppress("DEPRECATION")
+            getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let(::addAll)
+        }
+    }.distinct()
+
+    private fun reclaimOriginals(call: MethodCall, result: MethodChannel.Result) {
+        if (pendingReclaimResult != null) {
+            result.error("reclaim_active", "A storage-reclaim request is already open.", null)
+            return
+        }
+        val items = call.argument<List<Map<String, Any?>>>("items").orEmpty()
+        val validated = items.mapNotNull { item ->
+            val uri = (item["sourceAssetIdentifier"] as? String)
+                ?.let { runCatching { Uri.parse(it) }.getOrNull() }
+                ?: return@mapNotNull null
+            if (uri.authority != MediaStore.AUTHORITY || uri.lastPathSegment?.toLongOrNull() == null) {
+                return@mapNotNull null
+            }
+            ReclaimItem(uri, (item["sourceBytes"] as? Number)?.toLong() ?: 0L)
+        }.distinctBy { it.uri }
+        if (validated.isEmpty()) {
+            result.success(
+                reclaimPayload(
+                    success = false,
+                    message = "No verified local Android originals were eligible for removal.",
+                ),
+            )
+            return
+        }
+
+        val bytes = validated.sumOf(ReclaimItem::bytes)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val request = MediaStore.createTrashRequest(
+                contentResolver,
+                validated.map(ReclaimItem::uri),
+                true,
+            )
+            pendingReclaimResult = PendingReclaim(result, validated.size, bytes)
+            startIntentSenderForResult(
+                request.intentSender,
+                RECLAIM_MEDIA_REQUEST,
+                null,
+                0,
+                0,
+                0,
+            )
+            return
+        }
+
+        result.success(
+            reclaimPayload(
+                success = false,
+                message = "Originals were kept. Recoverable Trash requires Android 11 or newer.",
+            ),
+        )
+    }
+
+    private fun reclaimPayload(
+        success: Boolean,
+        count: Int = 0,
+        bytes: Long = 0,
+        message: String,
+    ): Map<String, Any?> = mapOf(
+        "success" to success,
+        "reclaimedCount" to count,
+        "reclaimedBytes" to bytes,
+        "message" to message,
+    )
+
     private fun importPickedMedia(uri: Uri): Map<String, Any?> {
         runCatching {
             contentResolver.takePersistableUriPermission(
@@ -303,15 +465,22 @@ class MainActivity : FlutterActivity() {
             displayName = displayName,
             byteSize = byteSize,
         )
+        val originalDisplayName = mediaStoreDetails?.displayName
+            ?.takeIf(String::isNotBlank)
+            ?.replace(Regex("[\\/\\u0000]"), "_")
+            ?: displayName
 
         return mapOf(
             "path" to destination.absolutePath,
-            "name" to displayName,
+            "name" to originalDisplayName,
             "mimeType" to mimeType,
             "byteSize" to byteSize,
             "sourceUri" to uri.toString(),
             "sourceRelativePath" to mediaStoreDetails?.relativePath,
             "sourceCaptureMillis" to mediaStoreDetails?.captureMillis,
+            "sourceAssetIdentifier" to mediaStoreDetails?.mediaUri?.toString(),
+            "sourceAlbumIdentifiers" to emptyList<String>(),
+            "supportsRecoverableReclaim" to (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R),
         )
     }
 
@@ -330,16 +499,96 @@ class MainActivity : FlutterActivity() {
         val directDetails = queryMediaStoreDetails(sourceUri)
         if (safeRelativePath(directDetails?.relativePath) != null) return directDetails
 
+        // ACTION_PICK_IMAGES returns a privacy-scoped picker URI. That URI may
+        // only be queried with PickerMediaColumns, so including RELATIVE_PATH in
+        // the regular projection above is rejected on Android 13+. For a local
+        // picker item, DATA provides its backing path and lets us recover the
+        // directory without guessing from the filename.
+        val pickerDetails = queryPickerMediaStoreDetails(sourceUri)
+        val pickerRecord = resolvePhotoPickerMediaStoreRecord(
+            sourceUri = sourceUri,
+            mimeType = mimeType,
+            pickerDisplayName = displayName,
+            byteSize = byteSize,
+        )
+        if (safeRelativePath(pickerRecord?.relativePath) != null) {
+            return pickerRecord
+                ?.withFallback(pickerDetails)
+                ?.withFallback(directDetails)
+        }
+        if (safeRelativePath(pickerDetails?.relativePath) != null) {
+            return pickerDetails?.withFallback(directDetails)
+        }
+
         val resolvedDetails = resolveMediaStoreUri(sourceUri, mimeType)?.let { mediaUri ->
             queryMediaStoreDetails(mediaUri)
         }
         if (safeRelativePath(resolvedDetails?.relativePath) != null) {
-            return resolvedDetails?.withCaptureFallback(directDetails)
+            return resolvedDetails
+                ?.withFallback(pickerRecord)
+                ?.withFallback(pickerDetails)
+                ?.withFallback(directDetails)
         }
 
         return findLocalMediaStoreMatch(mimeType, displayName, byteSize)
-            ?.withCaptureFallback(resolvedDetails)
-            ?.withCaptureFallback(directDetails)
+            ?.withFallback(resolvedDetails)
+            ?.withFallback(pickerRecord)
+            ?.withFallback(pickerDetails)
+            ?.withFallback(directDetails)
+    }
+
+    private fun resolvePhotoPickerMediaStoreRecord(
+        sourceUri: Uri,
+        mimeType: String,
+        pickerDisplayName: String,
+        byteSize: Long,
+    ): MediaStoreDetails? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            sourceUri.pathSegments.none { it.equals("picker", ignoreCase = true) }
+        ) return null
+
+        // Some OEM Photo Pickers expose the MediaStore row ID as both the final
+        // URI segment and a synthetic filename (for example, 12345.jpg). Resolve
+        // that ID back to the local record, then verify its size before trusting
+        // the folder or real display name.
+        val candidateIds = buildList {
+            sourceUri.lastPathSegment?.toLongOrNull()?.let(::add)
+            pickerDisplayName.substringBeforeLast('.', pickerDisplayName)
+                .toLongOrNull()
+                ?.let(::add)
+        }.distinct()
+        val collection = mediaStoreCollection(mimeType)
+        return candidateIds.firstNotNullOfOrNull { id ->
+            queryMediaStoreDetails(ContentUris.withAppendedId(collection, id))
+                ?.takeIf { details ->
+                    details.byteSize == null || details.byteSize == byteSize
+                }
+        }
+    }
+
+    private fun queryPickerMediaStoreDetails(uri: Uri): MediaStoreDetails? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+        val projection = arrayOf(
+            MediaStore.PickerMediaColumns.DATA,
+            MediaStore.PickerMediaColumns.DATE_TAKEN,
+            MediaStore.PickerMediaColumns.DISPLAY_NAME,
+            MediaStore.PickerMediaColumns.SIZE,
+        )
+        return runCatching {
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val relativePath = cursor.stringValue(MediaStore.PickerMediaColumns.DATA)
+                    ?.let(::relativePathFromAbsolutePath)
+                val captureMillis = cursor.longValue(MediaStore.PickerMediaColumns.DATE_TAKEN)
+                    ?.takeIf { it > 0 }
+                MediaStoreDetails(
+                    relativePath = relativePath,
+                    captureMillis = captureMillis,
+                    displayName = cursor.stringValue(MediaStore.PickerMediaColumns.DISPLAY_NAME),
+                    byteSize = cursor.longValue(MediaStore.PickerMediaColumns.SIZE),
+                )
+            }
+        }.getOrNull()
     }
 
     private fun queryMediaStoreDetails(uri: Uri): MediaStoreDetails? {
@@ -365,7 +614,13 @@ class MainActivity : FlutterActivity() {
                 }
                 val captureMillis = cursor.longValue(MediaStore.Images.Media.DATE_TAKEN)
                     ?.takeIf { it > 0 }
-                MediaStoreDetails(relativePath = relativePath, captureMillis = captureMillis)
+                MediaStoreDetails(
+                    relativePath = relativePath,
+                    captureMillis = captureMillis,
+                    displayName = cursor.stringValue(MediaStore.MediaColumns.DISPLAY_NAME),
+                    byteSize = cursor.longValue(MediaStore.MediaColumns.SIZE),
+                    mediaUri = uri.takeIf(::isCanonicalMediaStoreUri),
+                )
             }
         }.getOrNull()
     }
@@ -377,6 +632,7 @@ class MainActivity : FlutterActivity() {
     ): MediaStoreDetails? {
         val collection = mediaStoreCollection(mimeType)
         val projection = mutableListOf(
+            BaseColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.MediaColumns.SIZE,
             MediaStore.Images.Media.DATE_TAKEN,
@@ -411,6 +667,11 @@ class MainActivity : FlutterActivity() {
                     return@use MediaStoreDetails(
                         relativePath = relativePath,
                         captureMillis = captureMillis,
+                        displayName = cursor.stringValue(MediaStore.MediaColumns.DISPLAY_NAME),
+                        byteSize = cursor.longValue(MediaStore.MediaColumns.SIZE),
+                        mediaUri = cursor.longValue(BaseColumns._ID)?.let { id ->
+                            ContentUris.withAppendedId(collection, id)
+                        },
                     )
                 }
                 null
@@ -446,7 +707,17 @@ class MainActivity : FlutterActivity() {
                     if (safeRelativePath(relativePath) == null) continue
                     val captureMillis = cursor.longValue(MediaStore.Images.Media.DATE_TAKEN)
                         ?.takeIf { it > 0 }
-                    matches.add(MediaStoreDetails(relativePath, captureMillis))
+                    matches.add(
+                        MediaStoreDetails(
+                            relativePath = relativePath,
+                            captureMillis = captureMillis,
+                            displayName = cursor.stringValue(MediaStore.MediaColumns.DISPLAY_NAME),
+                            byteSize = cursor.longValue(MediaStore.MediaColumns.SIZE),
+                            mediaUri = cursor.longValue(BaseColumns._ID)?.let { id ->
+                                ContentUris.withAppendedId(collection, id)
+                            },
+                        ),
+                    )
                     val distinctFolders = matches.mapNotNull { safeRelativePath(it.relativePath) }
                         .distinct()
                     if (distinctFolders.size > 1) return@use null
@@ -479,6 +750,11 @@ class MainActivity : FlutterActivity() {
     } else {
         MediaStore.Images.Media.EXTERNAL_CONTENT_URI
     }
+
+    private fun isCanonicalMediaStoreUri(uri: Uri): Boolean =
+        uri.authority == MediaStore.AUTHORITY &&
+            uri.lastPathSegment?.toLongOrNull() != null &&
+            uri.pathSegments.none { it.equals("picker", ignoreCase = true) }
 
     private fun relativePathFromAbsolutePath(path: String): String? = runCatching {
         File(path).parentFile
@@ -1031,11 +1307,7 @@ class MainActivity : FlutterActivity() {
         isVideo: Boolean,
     ): Uri {
         val outputDirectory = safeRelativePath(sourceRelativePath)
-            ?: error(
-                "Android did not expose this item's original local folder. " +
-                    "Allow full Photos and videos permission, then choose a locally stored " +
-                    "Gallery or Files item. Cloud-only items cannot be saved beside the original.",
-            )
+            ?: error(missingSourceFolderMessage())
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
@@ -1076,6 +1348,16 @@ class MainActivity : FlutterActivity() {
         target.setLastModified(captureMillis ?: source.lastModified())
         MediaScannerConnection.scanFile(this, arrayOf(target.absolutePath), arrayOf(mimeType), null)
         return Uri.fromFile(target)
+    }
+
+    private fun missingSourceFolderMessage(): String = if (hasFullMediaLibraryAccess()) {
+        "Android could not verify this item's original local folder. " +
+            "Choose a locally stored Gallery or Files item; cloud-only and virtual items " +
+            "cannot be saved beside the original."
+    } else {
+        "Android did not expose this item's original local folder. " +
+            "Allow full Photos and videos permission, then choose a locally stored Gallery " +
+            "or Files item. Cloud-only items cannot be saved beside the original."
     }
 
     private fun safeRelativePath(path: String?): String? {
@@ -1132,6 +1414,13 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "clever_media_compress/media"
         private const val PICK_MEDIA_REQUEST = 7041
         private const val MEDIA_LIBRARY_PERMISSION_REQUEST = 7042
+        private const val RECLAIM_MEDIA_REQUEST = 7043
+        private val SHARED_MEDIA_EXTENSIONS = setOf(
+            "jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "bmp", "tif", "tiff", "avif",
+            "dng", "raw", "arw", "cr2", "cr3", "nef", "orf", "raf", "rw2",
+            "mp4", "mov", "m4v", "3gp", "3g2", "mkv", "webm", "avi", "mpeg", "mpg", "ts",
+            "mts", "m2ts", "vob", "wmv", "flv",
+        )
         private const val MP4_UNIX_EPOCH_OFFSET_SECONDS = 2_082_844_800L
 
         private val GPS_TAGS = setOf(
@@ -1264,11 +1553,26 @@ class MainActivity : FlutterActivity() {
     private data class MediaStoreDetails(
         val relativePath: String?,
         val captureMillis: Long?,
+        val displayName: String? = null,
+        val byteSize: Long? = null,
+        val mediaUri: Uri? = null,
     ) {
-        fun withCaptureFallback(fallback: MediaStoreDetails?): MediaStoreDetails = copy(
+        fun withFallback(fallback: MediaStoreDetails?): MediaStoreDetails = copy(
+            relativePath = relativePath ?: fallback?.relativePath,
             captureMillis = captureMillis ?: fallback?.captureMillis,
+            displayName = displayName ?: fallback?.displayName,
+            byteSize = byteSize ?: fallback?.byteSize,
+            mediaUri = mediaUri ?: fallback?.mediaUri,
         )
     }
+
+    private data class ReclaimItem(val uri: Uri, val bytes: Long)
+
+    private data class PendingReclaim(
+        val result: MethodChannel.Result,
+        val count: Int,
+        val bytes: Long,
+    )
 
     private data class Mp4Box(
         val type: String,

@@ -14,6 +14,9 @@ class SelectedMedia {
     this.sourceUri,
     this.sourceRelativePath,
     this.sourceCaptureMillis,
+    this.sourceAssetIdentifier,
+    this.sourceAlbumIdentifiers = const [],
+    this.supportsRecoverableReclaim = false,
   });
 
   final String id;
@@ -28,6 +31,9 @@ class SelectedMedia {
   final String? sourceUri;
   final String? sourceRelativePath;
   final int? sourceCaptureMillis;
+  final String? sourceAssetIdentifier;
+  final List<String> sourceAlbumIdentifiers;
+  final bool supportsRecoverableReclaim;
 
   bool get isImage => kind == MediaKind.image;
   String get extension {

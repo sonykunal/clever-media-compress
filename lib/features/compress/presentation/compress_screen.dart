@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/magic_accents.dart';
-import '../domain/compression_result.dart';
 import 'compress_controller.dart';
+import 'success_portal_screen.dart';
 import 'widgets/comparison_preview.dart';
 import 'widgets/compression_controls.dart';
 import 'widgets/hero_panel.dart';
@@ -28,6 +28,14 @@ class _CompressScreenState extends State<CompressScreen> {
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
+        final summary = widget.controller.completionSummary;
+        if (summary != null) {
+          return SuccessPortalScreen(
+            controller: widget.controller,
+            summary: summary,
+            onFinished: _finishPortal,
+          );
+        }
         return Scaffold(
           body: DecoratedBox(
             decoration: const BoxDecoration(
@@ -100,13 +108,6 @@ class _CompressScreenState extends State<CompressScreen> {
                                 widget.controller.selectPreviewMedia,
                             onRemove: widget.controller.removeMedia,
                           ),
-                          if (widget.controller.hasCompletedBatch) ...[
-                            const SizedBox(height: 14),
-                            _CompletionBanner(
-                              results: widget.controller.results,
-                              onNewBatch: widget.controller.clearMedia,
-                            ),
-                          ],
                           if (widget.controller.previewMedia != null) ...[
                             const SizedBox(height: 20),
                             if (widget.controller.previewMedia!.isImage)
@@ -132,7 +133,9 @@ class _CompressScreenState extends State<CompressScreen> {
                                 widget.controller.settings.preserveMetadata,
                             preserveLocation:
                                 widget.controller.settings.preserveLocation,
-                            enabled: !widget.controller.processing,
+                            enabled:
+                                !widget.controller.processing &&
+                                !widget.controller.reclaiming,
                             onImageQualityChanged:
                                 widget.controller.setImageQuality,
                             onImageResolutionChanged:
@@ -167,6 +170,17 @@ class _CompressScreenState extends State<CompressScreen> {
   void _setPreviewScrollLocked(bool locked) {
     if (_previewScrollLocked == locked || !mounted) return;
     setState(() => _previewScrollLocked = locked);
+  }
+
+  void _finishPortal(String? reclaimMessage) {
+    if (reclaimMessage != null && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(reclaimMessage)));
+      });
+    }
   }
 }
 
@@ -529,75 +543,6 @@ class _PermissionBanner extends StatelessWidget {
   }
 }
 
-class _CompletionBanner extends StatelessWidget {
-  const _CompletionBanner({required this.results, required this.onNewBatch});
-
-  final Map<String, CompressionResult> results;
-  final VoidCallback onNewBatch;
-
-  @override
-  Widget build(BuildContext context) {
-    final completed = results.values
-        .where((item) => item.status == CompressionJobStatus.completed)
-        .length;
-    final verified = results.values
-        .where(
-          (item) =>
-              item.status == CompressionJobStatus.completed &&
-              item.captureDateVerified,
-        )
-        .length;
-    final failed = results.values
-        .where((item) => item.status == CompressionJobStatus.failed)
-        .length;
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFECFDF3),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFA6F4C5)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: const BoxDecoration(
-              color: AppColors.success,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.check_rounded, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Compression complete',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '$completed saved • $verified date verified'
-                  '${failed > 0 ? ' • $failed failed' : ''}',
-                  style: const TextStyle(
-                    color: Color(0xFF067647),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          TextButton(onPressed: onNewBatch, child: const Text('New batch')),
-        ],
-      ),
-    );
-  }
-}
-
 class _BatchActionBar extends StatelessWidget {
   const _BatchActionBar({required this.controller});
 
@@ -605,7 +550,6 @@ class _BatchActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final completed = controller.hasCompletedBatch;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -657,22 +601,16 @@ class _BatchActionBar extends StatelessWidget {
                 const SizedBox(height: 10),
               ],
               FilledButton.icon(
-                onPressed: completed
-                    ? controller.clearMedia
-                    : controller.canStartBatch
+                onPressed: controller.canStartBatch
                     ? controller.startBatch
                     : null,
                 icon: Icon(
-                  completed
-                      ? Icons.check_circle_outline_rounded
-                      : controller.processing
+                  controller.processing
                       ? Icons.hourglass_top_rounded
                       : Icons.auto_awesome_rounded,
                 ),
                 label: Text(
-                  completed
-                      ? 'Start a new batch'
-                      : controller.processing
+                  controller.processing
                       ? 'Compression in progress'
                       : 'Compress ${Formatters.plural(controller.media.length, 'item')}',
                 ),

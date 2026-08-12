@@ -15,12 +15,14 @@ class CleverCompressApp extends StatefulWidget {
   State<CleverCompressApp> createState() => _CleverCompressAppState();
 }
 
-class _CleverCompressAppState extends State<CleverCompressApp> {
+class _CleverCompressAppState extends State<CleverCompressApp>
+    with WidgetsBindingObserver {
   late final CompressController _controller;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = CompressController(
       picker: MediaPickerService(),
       permissionService: MediaPermissionService(),
@@ -31,8 +33,16 @@ class _CleverCompressAppState extends State<CleverCompressApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _controller.consumeSharedMedia();
+    }
   }
 
   @override

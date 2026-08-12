@@ -13,7 +13,7 @@ class MediaPickerService {
   static const _nativeChannel = MethodChannel('clever_media_compress/media');
 
   Future<List<SelectedMedia>> pickMedia() async {
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isIOS) {
       final response = await _nativeChannel.invokeListMethod<dynamic>(
         'pickMedia',
       );
@@ -40,6 +40,29 @@ class MediaPickerService {
       limit: 100,
     );
     return _mapFiles(files);
+  }
+
+  Future<List<SelectedMedia>> consumeSharedMedia() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return const [];
+    final response = await _nativeChannel.invokeListMethod<dynamic>(
+      'consumeSharedMedia',
+    );
+    if (response == null || response.isEmpty) return const [];
+    final nativeDetails = <String, Map<String, dynamic>>{};
+    final files = <XFile>[];
+    for (final item in response) {
+      final details = Map<String, dynamic>.from(item as Map);
+      final path = details['path'] as String;
+      files.add(
+        XFile(
+          path,
+          name: details['name'] as String?,
+          mimeType: details['mimeType'] as String?,
+        ),
+      );
+      nativeDetails[path] = details;
+    }
+    return _mapFiles(files, nativeDetails: nativeDetails);
   }
 
   Future<List<SelectedMedia>> recoverLostMedia() async {
@@ -93,6 +116,14 @@ class MediaPickerService {
           sourceUri: details?['sourceUri'] as String?,
           sourceRelativePath: details?['sourceRelativePath'] as String?,
           sourceCaptureMillis: details?['sourceCaptureMillis'] as int?,
+          sourceAssetIdentifier: details?['sourceAssetIdentifier'] as String?,
+          sourceAlbumIdentifiers:
+              (details?['sourceAlbumIdentifiers'] as List<dynamic>?)
+                  ?.whereType<String>()
+                  .toList(growable: false) ??
+              const [],
+          supportsRecoverableReclaim:
+              details?['supportsRecoverableReclaim'] == true,
         ),
       );
     }

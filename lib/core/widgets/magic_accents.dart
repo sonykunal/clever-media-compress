@@ -10,11 +10,13 @@ class MagicIconBadge extends StatelessWidget {
     this.size = 44,
     this.iconSize = 22,
     this.inverted = false,
+    this.icon = Icons.auto_fix_high_rounded,
   });
 
   final double size;
   final double iconSize;
   final bool inverted;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +36,7 @@ class MagicIconBadge extends StatelessWidget {
         ],
       ),
       child: Icon(
-        Icons.auto_fix_high_rounded,
+        icon,
         size: iconSize,
         color: inverted ? AppColors.brandBright : AppColors.brand,
       ),
