@@ -35,10 +35,16 @@ class MagicIconBadge extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(
-        icon,
-        size: iconSize,
-        color: inverted ? AppColors.brandBright : AppColors.brand,
+      clipBehavior: Clip.antiAlias,
+      child: Image.asset(
+        'assets/branding/app_logo.png',
+        fit: BoxFit.cover,
+        semanticLabel: 'Clever Compress',
+        errorBuilder: (context, error, stackTrace) => Icon(
+          icon,
+          size: iconSize,
+          color: inverted ? AppColors.brandBright : AppColors.brand,
+        ),
       ),
     );
   }
