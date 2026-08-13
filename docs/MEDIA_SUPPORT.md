@@ -20,6 +20,9 @@ version.
 
 Embedded EXIF/XMP/GPS is copied where the destination container supports it.
 The gallery capture date is also carried separately and verified after publish.
+Capture metadata and source location preservation are always enabled product
+guarantees rather than user-configurable switches. Location is copied only when
+the source contains supported GPS/location metadata.
 
 ## Videos
 
@@ -29,10 +32,11 @@ has a decoder for its internal video/audio codecs.
 
 - Video thumbnails are generated natively into small temporary JPEG cache files:
   Android uses `MediaMetadataRetriever`, and iOS uses `AVAssetImageGenerator`.
-- Selecting a video in the batch shows that thumbnail as a lightweight preview
-  frame plus estimated output size, quality, frame scale and MP4 output format.
-  The preview frame uses an estimated visual softness/overlay that changes with
-  the video recipe so users can see settings react before export.
+- Selecting a video in the batch shows that thumbnail in the same draggable,
+  zoomable original/estimated comparison used for photos. The synchronized
+  center divider, pinch/pan controls and inline zoom controls operate on one
+  aligned frame; estimated output size and visual softness update with the video
+  recipe without covering the frame with quality, frame or container badges.
   The app does not transcode a hidden video preview before submit, because that
   would increase battery, heat and temporary storage for multi-item batches.
 - Android uses Jetpack Media3 Transformer with hardware codecs.

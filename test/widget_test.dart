@@ -13,6 +13,8 @@ import 'package:clever_media_compress/features/compress/domain/safe_reclaim_poli
 import 'package:clever_media_compress/features/compress/presentation/compress_controller.dart';
 import 'package:clever_media_compress/features/compress/presentation/compress_screen.dart';
 import 'package:clever_media_compress/features/compress/presentation/success_portal_screen.dart';
+import 'package:clever_media_compress/features/compress/presentation/widgets/comparison_preview.dart';
+import 'package:clever_media_compress/features/compress/presentation/widgets/compression_controls.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -23,12 +25,11 @@ void main() {
     expect(Formatters.fileSize(2 * 1024 * 1024), '2.0 MB');
   });
 
-  test('photo and video recipes remain independent when copied', () {
+  test('recipes remain independent and protection guarantees stay enabled', () {
     const settings = CompressionSettings();
     final changed = settings.copyWith(
       image: settings.image.copyWith(quality: 64),
       video: settings.video.copyWith(resolutionScale: .5),
-      preserveLocation: false,
     );
 
     expect(changed.image.quality, 64);
@@ -37,8 +38,45 @@ void main() {
     expect(changed.recipeFor(MediaKind.image), same(changed.image));
     expect(changed.recipeFor(MediaKind.video), same(changed.video));
     expect(changed.preserveMetadata, isTrue);
-    expect(changed.preserveLocation, isFalse);
+    expect(changed.preserveLocation, isTrue);
     expect(changed.outputSuffix, '_compressed');
+  });
+
+  testWidgets('metadata protections are read-only without switches', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 700);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(12),
+            child: CompressionControls(
+              imageRecipe: const MediaCompressionRecipe(),
+              videoRecipe: const MediaCompressionRecipe(),
+              imageCount: 1,
+              videoCount: 0,
+              enabled: true,
+              onImageQualityChanged: (_) {},
+              onImageResolutionChanged: (_) {},
+              onVideoQualityChanged: (_) {},
+              onVideoResolutionChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Preserve capture metadata'), findsOneWidget);
+    expect(find.text('Preserve location'), findsOneWidget);
+    expect(find.textContaining('Always on'), findsNWidgets(2));
+    expect(find.byType(Switch), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   test(
@@ -51,6 +89,52 @@ void main() {
       expect(estimated, lessThan(20 * 1024 * 1024));
     },
   );
+
+  testWidgets('video uses the interactive comparison without metric labels', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: EdgeInsets.all(18),
+            child: ComparisonPreview(
+              media: SelectedMedia(
+                id: 'video-preview',
+                path: '/temporary/video.mp4',
+                name: 'video.mp4',
+                byteSize: 20 * 1024 * 1024,
+                kind: MediaKind.video,
+              ),
+              recipe: MediaCompressionRecipe(quality: 50, resolutionScale: .5),
+              preview: null,
+              loading: false,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Live comparison'), findsOneWidget);
+    expect(find.text('ORIGINAL'), findsOneWidget);
+    expect(find.text('ESTIMATED'), findsOneWidget);
+    expect(find.text('2.5 MB'), findsOneWidget);
+    expect(find.byTooltip('Zoom in'), findsOneWidget);
+    expect(find.text('Reset'), findsOneWidget);
+    expect(find.textContaining('Quality'), findsNothing);
+    expect(find.textContaining('Preview frame'), findsNothing);
+    expect(find.textContaining('Container'), findsNothing);
+
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 
   test('media permission channel payload is parsed consistently', () {
     final result = MediaAccessResult.fromMap({

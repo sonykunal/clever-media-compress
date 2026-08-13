@@ -12,30 +12,22 @@ class CompressionControls extends StatefulWidget {
     required this.videoRecipe,
     required this.imageCount,
     required this.videoCount,
-    required this.preserveMetadata,
-    required this.preserveLocation,
     required this.enabled,
     required this.onImageQualityChanged,
     required this.onImageResolutionChanged,
     required this.onVideoQualityChanged,
     required this.onVideoResolutionChanged,
-    required this.onMetadataChanged,
-    required this.onLocationChanged,
   });
 
   final MediaCompressionRecipe imageRecipe;
   final MediaCompressionRecipe videoRecipe;
   final int imageCount;
   final int videoCount;
-  final bool preserveMetadata;
-  final bool preserveLocation;
   final bool enabled;
   final ValueChanged<double> onImageQualityChanged;
   final ValueChanged<double> onImageResolutionChanged;
   final ValueChanged<double> onVideoQualityChanged;
   final ValueChanged<double> onVideoResolutionChanged;
-  final ValueChanged<bool> onMetadataChanged;
-  final ValueChanged<bool> onLocationChanged;
 
   @override
   State<CompressionControls> createState() => _CompressionControlsState();
@@ -151,22 +143,16 @@ class _CompressionControlsState extends State<CompressionControls> {
             const SizedBox(height: 24),
             const Divider(color: AppColors.border),
             const SizedBox(height: 10),
-            _ProtectionSwitch(
-              icon: Icons.verified_user_outlined,
+            const _ProtectionStatus(
+              icon: Icons.shield_outlined,
               title: 'Preserve capture metadata',
-              subtitle: 'Applied to every selected photo and video',
-              value: widget.preserveMetadata,
-              enabled: widget.enabled,
-              onChanged: widget.onMetadataChanged,
+              subtitle: 'Always on · Verified after saving when supported',
             ),
             const SizedBox(height: 8),
-            _ProtectionSwitch(
+            const _ProtectionStatus(
               icon: Icons.location_on_outlined,
               title: 'Preserve location',
-              subtitle: 'Applied when GPS metadata is present',
-              value: widget.preserveLocation,
-              enabled: widget.enabled && widget.preserveMetadata,
-              onChanged: widget.onLocationChanged,
+              subtitle: 'Always on · Kept when the source contains GPS',
             ),
           ],
         ),
@@ -277,15 +263,25 @@ class _RecipeEditor extends StatelessWidget {
           onChanged: enabled ? onQualityChanged : null,
         ),
         const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Smaller file',
-              style: TextStyle(color: AppColors.muted, fontSize: 11),
+            Expanded(
+              child: Text(
+                'Smaller file',
+                maxLines: 1,
+                overflow: TextOverflow.fade,
+                softWrap: false,
+                style: TextStyle(color: AppColors.muted, fontSize: 11),
+              ),
             ),
-            Text(
-              'Best detail',
-              style: TextStyle(color: AppColors.muted, fontSize: 11),
+            Expanded(
+              child: Text(
+                'Best detail',
+                maxLines: 1,
+                overflow: TextOverflow.fade,
+                softWrap: false,
+                textAlign: TextAlign.end,
+                style: TextStyle(color: AppColors.muted, fontSize: 11),
+              ),
             ),
           ],
         ),
@@ -389,64 +385,74 @@ class _ResolutionOption extends StatelessWidget {
   }
 }
 
-class _ProtectionSwitch extends StatelessWidget {
-  const _ProtectionSwitch({
+class _ProtectionStatus extends StatelessWidget {
+  const _ProtectionStatus({
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final bool value;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: enabled ? 1 : .48,
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: AppColors.violetMist,
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: AppColors.violetSoft),
+    return Semantics(
+      label: '$title. Always on. $subtitle.',
+      readOnly: true,
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: AppColors.violetMist.withValues(alpha: .62),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.violetSoft),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.violetSoft),
+              ),
+              child: Icon(icon, color: AppColors.brand, size: 21),
             ),
-            child: Icon(icon, color: AppColors.brand, size: 21),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 10.5,
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 10.5,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Switch.adaptive(value: value, onChanged: enabled ? onChanged : null),
-        ],
+            const SizedBox(width: 8),
+            const ExcludeSemantics(
+              child: Icon(
+                Icons.check_circle_rounded,
+                size: 24,
+                color: AppColors.success,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

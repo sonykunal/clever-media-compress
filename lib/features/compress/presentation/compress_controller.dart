@@ -223,22 +223,6 @@ class CompressController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setPreserveMetadata(bool value) {
-    _discardCompletedResults();
-    _settings = _settings.copyWith(preserveMetadata: value);
-    if (!value) {
-      _settings = _settings.copyWith(preserveLocation: false);
-    }
-    notifyListeners();
-  }
-
-  void setPreserveLocation(bool value) {
-    if (!_settings.preserveMetadata) return;
-    _discardCompletedResults();
-    _settings = _settings.copyWith(preserveLocation: value);
-    notifyListeners();
-  }
-
   void selectPreviewMedia(String id) {
     if (_processing) return;
     final selected = _mediaById(id);

@@ -41,15 +41,17 @@ class CompressionSettings {
       quality: 68,
       resolutionScale: .75,
     ),
-    this.preserveMetadata = true,
-    this.preserveLocation = true,
     this.outputSuffix = '_compressed',
   });
 
   final MediaCompressionRecipe image;
   final MediaCompressionRecipe video;
-  final bool preserveMetadata;
-  final bool preserveLocation;
+
+  /// Product-level guarantees. These remain explicit in the platform-channel
+  /// payload so older native engines keep their safe defaults, but no UI or
+  /// controller path can disable them.
+  final bool preserveMetadata = true;
+  final bool preserveLocation = true;
   final String outputSuffix;
 
   MediaCompressionRecipe recipeFor(MediaKind kind) => switch (kind) {
@@ -60,15 +62,11 @@ class CompressionSettings {
   CompressionSettings copyWith({
     MediaCompressionRecipe? image,
     MediaCompressionRecipe? video,
-    bool? preserveMetadata,
-    bool? preserveLocation,
     String? outputSuffix,
   }) {
     return CompressionSettings(
       image: image ?? this.image,
       video: video ?? this.video,
-      preserveMetadata: preserveMetadata ?? this.preserveMetadata,
-      preserveLocation: preserveLocation ?? this.preserveLocation,
       outputSuffix: outputSuffix ?? this.outputSuffix,
     );
   }

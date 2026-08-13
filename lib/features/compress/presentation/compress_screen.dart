@@ -9,7 +9,6 @@ import 'widgets/comparison_preview.dart';
 import 'widgets/compression_controls.dart';
 import 'widgets/hero_panel.dart';
 import 'widgets/media_strip.dart';
-import 'widgets/video_preview_card.dart';
 
 class CompressScreen extends StatefulWidget {
   const CompressScreen({super.key, required this.controller});
@@ -110,18 +109,15 @@ class _CompressScreenState extends State<CompressScreen> {
                           ),
                           if (widget.controller.previewMedia != null) ...[
                             const SizedBox(height: 20),
-                            if (widget.controller.previewMedia!.isImage)
-                              ComparisonPreview(
-                                media: widget.controller.previewMedia!,
-                                preview: widget.controller.preview,
-                                loading: widget.controller.previewing,
-                                onScrollLockChanged: _setPreviewScrollLocked,
-                              )
-                            else
-                              VideoPreviewCard(
-                                media: widget.controller.previewMedia!,
-                                recipe: widget.controller.settings.video,
+                            ComparisonPreview(
+                              media: widget.controller.previewMedia!,
+                              recipe: widget.controller.settings.recipeFor(
+                                widget.controller.previewMedia!.kind,
                               ),
+                              preview: widget.controller.preview,
+                              loading: widget.controller.previewing,
+                              onScrollLockChanged: _setPreviewScrollLocked,
+                            ),
                           ],
                           const SizedBox(height: 16),
                           CompressionControls(
@@ -129,10 +125,6 @@ class _CompressScreenState extends State<CompressScreen> {
                             videoRecipe: widget.controller.settings.video,
                             imageCount: widget.controller.imageCount,
                             videoCount: widget.controller.videoCount,
-                            preserveMetadata:
-                                widget.controller.settings.preserveMetadata,
-                            preserveLocation:
-                                widget.controller.settings.preserveLocation,
                             enabled:
                                 !widget.controller.processing &&
                                 !widget.controller.reclaiming,
@@ -144,10 +136,6 @@ class _CompressScreenState extends State<CompressScreen> {
                                 widget.controller.setVideoQuality,
                             onVideoResolutionChanged:
                                 widget.controller.setVideoResolutionScale,
-                            onMetadataChanged:
-                                widget.controller.setPreserveMetadata,
-                            onLocationChanged:
-                                widget.controller.setPreserveLocation,
                           ),
                           const SizedBox(height: 16),
                           const _OutputPromise(),

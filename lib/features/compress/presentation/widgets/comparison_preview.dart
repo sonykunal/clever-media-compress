@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -7,18 +8,21 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/magic_accents.dart';
 import '../../data/preview_service.dart';
+import '../../domain/compression_settings.dart';
 import '../../domain/media_asset.dart';
 
 class ComparisonPreview extends StatefulWidget {
   const ComparisonPreview({
     super.key,
     required this.media,
+    required this.recipe,
     required this.preview,
     required this.loading,
     this.onScrollLockChanged,
   });
 
   final SelectedMedia media;
+  final MediaCompressionRecipe recipe;
   final PreviewSnapshot? preview;
   final bool loading;
   final ValueChanged<bool>? onScrollLockChanged;
@@ -73,15 +77,19 @@ class _ComparisonPreviewState extends State<ComparisonPreview>
   @override
   Widget build(BuildContext context) {
     final preview = widget.preview;
-    final savedPercent = preview == null || widget.media.byteSize == 0
+    final isVideo = !widget.media.isImage;
+    final comparisonBytes = isVideo
+        ? widget.recipe.estimateOutputBytes(widget.media.byteSize)
+        : preview?.byteSize;
+    final savedPercent = comparisonBytes == null || widget.media.byteSize == 0
         ? null
-        : ((1 - preview.byteSize / widget.media.byteSize) * 100)
+        : ((1 - comparisonBytes / widget.media.byteSize) * 100)
               .clamp(0, 99)
               .round();
     final originalSize = Formatters.fileSize(widget.media.byteSize);
-    final estimatedSize = preview == null
+    final comparisonSize = comparisonBytes == null
         ? 'Calculating...'
-        : Formatters.fileSize(preview.byteSize);
+        : Formatters.fileSize(comparisonBytes);
 
     return Card(
       child: Padding(
@@ -128,7 +136,7 @@ class _ComparisonPreviewState extends State<ComparisonPreview>
                       border: Border.all(color: AppColors.violetSoft),
                     ),
                     child: Text(
-                      '$savedPercent% smaller',
+                      '${isVideo ? '~' : ''}$savedPercent% smaller',
                       style: const TextStyle(
                         color: AppColors.brandDark,
                         fontSize: 12,
@@ -165,16 +173,11 @@ class _ComparisonPreviewState extends State<ComparisonPreview>
                             controller: _transformationController,
                             onInteractionStart: _zoomAnimationController.stop,
                             onScrollLockChanged: widget.onScrollLockChanged,
-                            child: preview != null
-                                ? Image.memory(
-                                    preview.bytes,
-                                    fit: BoxFit.cover,
-                                    gaplessPlayback: true,
-                                  )
-                                : Image.file(
-                                    File(widget.media.path),
-                                    fit: BoxFit.cover,
-                                  ),
+                            child: _ComparisonMediaFrame(
+                              media: widget.media,
+                              preview: preview,
+                              recipe: widget.recipe,
+                            ),
                           ),
                           ClipRect(
                             clipper: _WidthClipper(_split),
@@ -182,15 +185,7 @@ class _ComparisonPreviewState extends State<ComparisonPreview>
                               child: _MirroredImageLayer(
                                 viewport: viewport,
                                 controller: _transformationController,
-                                child: preview != null
-                                    ? Image.file(
-                                        File(widget.media.path),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : Image.file(
-                                        File(widget.media.path),
-                                        fit: BoxFit.cover,
-                                      ),
+                                child: _OriginalMediaFrame(media: widget.media),
                               ),
                             ),
                           ),
@@ -206,8 +201,8 @@ class _ComparisonPreviewState extends State<ComparisonPreview>
                             right: 12,
                             top: 12,
                             child: _PreviewLabel(
-                              title: 'COMPRESSED',
-                              size: estimatedSize,
+                              title: isVideo ? 'ESTIMATED' : 'COMPRESSED',
+                              size: comparisonSize,
                             ),
                           ),
                           Positioned(
@@ -281,6 +276,17 @@ class _ComparisonPreviewState extends State<ComparisonPreview>
                 ),
               ),
             ),
+            if (isVideo) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Estimated frame preview only. Final video compression happens on submit.',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -352,6 +358,103 @@ class _ComparisonPreviewState extends State<ComparisonPreview>
     );
     if (!mounted || (scale - _zoom).abs() < .02) return;
     setState(() => _zoom = scale);
+  }
+}
+
+class _ComparisonMediaFrame extends StatelessWidget {
+  const _ComparisonMediaFrame({
+    required this.media,
+    required this.preview,
+    required this.recipe,
+  });
+
+  final SelectedMedia media;
+  final PreviewSnapshot? preview;
+  final MediaCompressionRecipe recipe;
+
+  @override
+  Widget build(BuildContext context) {
+    if (media.isImage) {
+      final snapshot = preview;
+      return snapshot == null
+          ? _OriginalMediaFrame(media: media)
+          : Image.memory(
+              snapshot.bytes,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, _, _) => _OriginalMediaFrame(media: media),
+            );
+    }
+
+    final qualityLoss = 1 - recipe.quality.clamp(1, 100) / 100;
+    final frameLoss = 1 - recipe.resolutionScale.clamp(.1, 1.0);
+    final visualLoss = (qualityLoss * .62 + frameLoss * .38).clamp(0.0, 1.0);
+    final blurSigma = visualLoss * 3.2;
+    final overlayOpacity = .08 + visualLoss * .24;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 140),
+          child: ImageFiltered(
+            key: ValueKey('${blurSigma.toStringAsFixed(2)}-$overlayOpacity'),
+            imageFilter: ui.ImageFilter.blur(
+              sigmaX: blurSigma,
+              sigmaY: blurSigma,
+            ),
+            child: _OriginalMediaFrame(media: media),
+          ),
+        ),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          color: AppColors.brand.withValues(alpha: overlayOpacity),
+        ),
+      ],
+    );
+  }
+}
+
+class _OriginalMediaFrame extends StatelessWidget {
+  const _OriginalMediaFrame({required this.media});
+
+  final SelectedMedia media;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = media.isImage ? media.path : media.thumbnailPath;
+    if (path == null || path.isEmpty) return const _VideoFrameFallback();
+    return Image.file(
+      File(path),
+      fit: media.isImage ? BoxFit.cover : BoxFit.contain,
+      errorBuilder: (_, _, _) => media.isImage
+          ? const ColoredBox(color: Color(0xFF161622))
+          : const _VideoFrameFallback(),
+    );
+  }
+}
+
+class _VideoFrameFallback extends StatelessWidget {
+  const _VideoFrameFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.violetMist, AppColors.violetSoft],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.movie_creation_outlined,
+          color: AppColors.brand,
+          size: 54,
+        ),
+      ),
+    );
   }
 }
 

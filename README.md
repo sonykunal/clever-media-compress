@@ -11,7 +11,8 @@ compression engine:
 - Multi-photo/video selection with Android lost-selection recovery.
 - Independent photo and video recipes: each media type has its own quality
   slider (20–95%) and 100%, 75%, or 50% resolution presets in a mixed batch.
-- A draggable, live before/after preview for the first selected image.
+- A draggable, zoomable before/after preview for the selected photo or video;
+  video frames are clearly marked as estimates until final submission.
 - Sequential batch state, per-item progress, failures, and output-size results.
 - Android image compression in Kotlin with EXIF/XMP tag copying, optional GPS
   removal, `MediaStore.DATE_TAKEN`, same-folder MediaStore publication, and
